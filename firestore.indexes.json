@@ -1,4 +1,22 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "cobros_mensuales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "mes",           "order": "ASCENDING" },
+        { "fieldPath": "anio",          "order": "ASCENDING" },
+        { "fieldPath": "clienteNombre", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cierres_historicos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "anio", "order": "DESCENDING" },
+        { "fieldPath": "mes",  "order": "DESCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

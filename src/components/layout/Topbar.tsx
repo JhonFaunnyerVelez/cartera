@@ -1,0 +1,38 @@
+import { useLocation } from 'react-router-dom';
+import { Bell } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+
+const titles: Record<string, string> = {
+  '/': 'Dashboard',
+  '/clientes': 'Gestión de Clientes',
+  '/carteras': 'Cobros del Mes',
+  '/cierres': 'Cierres Mensuales',
+};
+
+export default function Topbar() {
+  const { pathname } = useLocation();
+  const { user } = useAuth();
+
+  const title =
+    titles[pathname] ||
+    (pathname.startsWith('/clientes/') ? 'Detalle del Cliente' : 'CartéraApp');
+
+  return (
+    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-10">
+      <div>
+        <h2 className="text-slate-800 font-semibold text-lg">{title}</h2>
+        <p className="text-slate-400 text-xs">
+          {new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
+      <div className="flex items-center gap-3">
+        <button className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 transition flex items-center justify-center text-slate-500">
+          <Bell size={16} />
+        </button>
+        {user?.photoURL && (
+          <img src={user.photoURL} alt="" className="w-9 h-9 rounded-full ring-2 ring-indigo-200" />
+        )}
+      </div>
+    </header>
+  );
+}
