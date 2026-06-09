@@ -20,7 +20,12 @@ export function calcularEstado(fechaVencimientoMensual: Timestamp): EstadoCarter
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
   const vencimiento = fechaVencimientoMensual.toDate();
+  
+  // Ajustar el mes y año al actual para calcular el estado del mes en curso
+  vencimiento.setFullYear(hoy.getFullYear());
+  vencimiento.setMonth(hoy.getMonth());
   vencimiento.setHours(0, 0, 0, 0);
+
   const diffMs = vencimiento.getTime() - hoy.getTime();
   const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   if (diasRestantes < 0) return 'Mora';
@@ -32,7 +37,12 @@ export function diasParaVencer(fechaVencimientoMensual: Timestamp): number {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
   const vencimiento = fechaVencimientoMensual.toDate();
+  
+  // Ajustar el mes y año al actual para calcular los días restantes en el mes en curso
+  vencimiento.setFullYear(hoy.getFullYear());
+  vencimiento.setMonth(hoy.getMonth());
   vencimiento.setHours(0, 0, 0, 0);
+
   const diffMs = vencimiento.getTime() - hoy.getTime();
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
@@ -59,6 +69,17 @@ export function useCarteras() {
     );
     return unsubscribe;
   }, []);
+
+  /**
+   * Calcula la fecha de vencimiento para el mes y año específicos,
+   * manteniendo el día y hora de la fecha base.
+   */
+  const calcularFechaVencimientoCobro = (fechaBase: Timestamp | undefined, mes: number, anio: number): Timestamp | undefined => {
+    if (!fechaBase) return fechaBase;
+    const dateBase = fechaBase.toDate();
+    const nuevaFecha = new Date(anio, mes - 1, dateBase.getDate(), dateBase.getHours(), dateBase.getMinutes(), dateBase.getSeconds());
+    return Timestamp.fromDate(nuevaFecha);
+  };
 
   /**
    * Crea la cartera Y genera automáticamente su cobro para el mes actual.
@@ -104,7 +125,7 @@ export function useCarteras() {
         valorCobro: data.valorCartera,
         estado: 'Pendiente',
         fechaPago: null,
-        fechaVencimiento: data.fechaVencimientoMensual,
+        fechaVencimiento: calcularFechaVencimientoCobro(data.fechaVencimientoMensual, mesActual, anioActual),
       });
     }
 

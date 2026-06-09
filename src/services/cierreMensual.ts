@@ -19,6 +19,7 @@ import {
   writeBatch,
   doc,
   serverTimestamp,
+  Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { CobroMensual, Cartera } from '../types';
@@ -45,6 +46,17 @@ function siguienteMes(mes: number, anio: number): { mes: number; anio: number } 
  */
 export function formatCierreId(mes: number, anio: number): string {
   return `${String(mes).padStart(2, '0')}-${anio}`;
+}
+
+/**
+ * Calcula la fecha de vencimiento para el mes y año específicos,
+ * manteniendo el día y hora de la fecha base.
+ */
+function calcularFechaVencimientoCobro(fechaBase: Timestamp | undefined, mes: number, anio: number): Timestamp | undefined {
+  if (!fechaBase) return fechaBase;
+  const dateBase = fechaBase.toDate();
+  const nuevaFecha = new Date(anio, mes - 1, dateBase.getDate(), dateBase.getHours(), dateBase.getMinutes(), dateBase.getSeconds());
+  return Timestamp.fromDate(nuevaFecha);
 }
 
 /**
@@ -133,7 +145,7 @@ export async function ejecutarCierreMensual(
       valorCobro: cartera.valorCartera,
       estado: 'Pendiente',
       fechaPago: null,
-      fechaVencimiento: cartera.fechaVencimientoMensual,
+      fechaVencimiento: calcularFechaVencimientoCobro(cartera.fechaVencimientoMensual, mesSig, anioSig),
     };
 
     const nuevoCobroRef = doc(collection(db, 'cobros_mensuales'));
@@ -189,7 +201,7 @@ export async function generarCobrosParaMes(mes: number, anio: number): Promise<n
       valorCobro: cartera.valorCartera,
       estado: 'Pendiente',
       fechaPago: null,
-      fechaVencimiento: cartera.fechaVencimientoMensual,
+      fechaVencimiento: calcularFechaVencimientoCobro(cartera.fechaVencimientoMensual, mes, anio),
     });
     count++;
   }

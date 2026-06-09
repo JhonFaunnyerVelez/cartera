@@ -13,6 +13,23 @@ import {
 import { db } from '../firebase/config';
 import type { CobroMensual } from '../types';
 
+/**
+ * Ajusta dinámicamente la fecha de vencimiento para cobros antiguos que hayan sido
+ * guardados con la fecha base de la cartera (mes/año incorrectos para este cobro).
+ */
+function aplicarCorreccionFecha(data: any): CobroMensual {
+  const cobro = data as CobroMensual;
+  if (cobro.fechaVencimiento?.toDate) {
+    const base = cobro.fechaVencimiento.toDate();
+    // Si el mes o año de la fecha de vencimiento guardada no coinciden con los del cobro, los ajustamos en memoria
+    if (base.getMonth() !== cobro.mes - 1 || base.getFullYear() !== cobro.anio) {
+      const realDate = new Date(cobro.anio, cobro.mes - 1, base.getDate(), base.getHours(), base.getMinutes(), base.getSeconds());
+      cobro.fechaVencimiento = Timestamp.fromDate(realDate);
+    }
+  }
+  return cobro;
+}
+
 export function useCobros(mes: number, anio: number) {
   const [cobros, setCobros] = useState<CobroMensual[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +44,11 @@ export function useCobros(mes: number, anio: number) {
       orderBy('clienteNombre', 'asc')
     );
     return onSnapshot(q, (snap) => {
-      setCobros(snap.docs.map(d => ({ id: d.id, ...d.data() } as CobroMensual)));
+      setCobros(snap.docs.map(d => {
+        const data = d.data();
+        const cobroCorregido = aplicarCorreccionFecha(data);
+        return { id: d.id, ...cobroCorregido };
+      }));
       setLoading(false);
     }, (err) => {
       console.error('Error fetching cobros:', err);

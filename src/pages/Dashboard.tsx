@@ -16,6 +16,15 @@ function formatDate(ts: any): string {
   return ts.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function formatDateCurrentMonth(ts: any): string {
+  if (!ts) return '-';
+  const d = ts.toDate();
+  const hoy = new Date();
+  d.setFullYear(hoy.getFullYear());
+  d.setMonth(hoy.getMonth());
+  return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export default function Dashboard() {
   const { clientes, loading: loadingClientes } = useClientes();
   const { carteras, loading: loadingCarteras } = useCarteras();
@@ -139,7 +148,7 @@ export default function Dashboard() {
                         {formatCOP(cartera.valorCartera)}
                       </td>
                       <td className="px-6 py-4 text-slate-500 text-sm">
-                        {formatDate(cartera.fechaVencimientoMensual)}
+                        {formatDateCurrentMonth(cartera.fechaVencimientoMensual)}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
@@ -193,7 +202,7 @@ export default function Dashboard() {
                         <p className="text-slate-400 text-xs">{cliente?.empresa || ''}</p>
                       </td>
                       <td className="px-6 py-4 text-slate-700 text-sm font-medium">{formatCOP(cartera.valorCartera)}</td>
-                      <td className="px-6 py-4 text-slate-500 text-sm">{formatDate(cartera.fechaVencimientoMensual)}</td>
+                      <td className="px-6 py-4 text-slate-500 text-sm">{formatDateCurrentMonth(cartera.fechaVencimientoMensual)}</td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
                           {diasVencidos} día{diasVencidos !== 1 ? 's' : ''}

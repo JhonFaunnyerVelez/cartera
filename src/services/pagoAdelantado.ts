@@ -23,6 +23,17 @@ export interface PagoAdelantoResult {
   periodos: string[];
 }
 
+/**
+ * Calcula la fecha de vencimiento para el mes y año específicos,
+ * manteniendo el día y hora de la fecha base.
+ */
+function calcularFechaVencimientoCobro(fechaBase: Timestamp | undefined, mes: number, anio: number): Timestamp | undefined {
+  if (!fechaBase) return fechaBase;
+  const dateBase = fechaBase.toDate();
+  const nuevaFecha = new Date(anio, mes - 1, dateBase.getDate(), dateBase.getHours(), dateBase.getMinutes(), dateBase.getSeconds());
+  return Timestamp.fromDate(nuevaFecha);
+}
+
 export async function registrarPagoAdelantado(
   cartera: Cartera,
   mesInicio: number,
@@ -89,7 +100,7 @@ export async function registrarPagoAdelantado(
       mes: mesInicio,
       anio: anioInicio,
       valorCobro: cartera.valorCartera,
-      fechaVencimiento: cartera.fechaVencimientoMensual,
+      fechaVencimiento: calcularFechaVencimientoCobro(cartera.fechaVencimientoMensual, mesInicio, anioInicio),
       ...dataActualBase
     });
   } else {
@@ -119,7 +130,7 @@ export async function registrarPagoAdelantado(
         mes: op.mes,
         anio: op.anio,
         valorCobro: cartera.valorCartera,
-        fechaVencimiento: cartera.fechaVencimientoMensual,
+        fechaVencimiento: calcularFechaVencimientoCobro(cartera.fechaVencimientoMensual, op.mes, op.anio),
         ...dataFuturaBase
       });
     }
