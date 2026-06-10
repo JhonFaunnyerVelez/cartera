@@ -11,10 +11,6 @@ function formatCOP(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value);
 }
 
-function formatDate(ts: any): string {
-  if (!ts) return '-';
-  return ts.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 function formatDateCurrentMonth(ts: any): string {
   if (!ts) return '-';

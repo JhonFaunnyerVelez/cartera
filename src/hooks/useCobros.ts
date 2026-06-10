@@ -47,7 +47,7 @@ export function useCobros(mes: number, anio: number) {
       setCobros(snap.docs.map(d => {
         const data = d.data();
         const cobroCorregido = aplicarCorreccionFecha(data);
-        return { id: d.id, ...cobroCorregido };
+        return { ...cobroCorregido, id: d.id };
       }));
       setLoading(false);
     }, (err) => {
