@@ -133,26 +133,26 @@ export default function Recaudos() {
       {/* Tabla */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="data-table text-left">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Fecha de Pago</th>
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Cliente / Cartera</th>
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Periodo</th>
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">Valor Recibido</th>
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
+                <th className="text-slate-500">Fecha de Pago</th>
+                <th className="text-slate-500">Cliente / Cartera</th>
+                <th className="text-slate-500">Periodo</th>
+                <th className="text-slate-500 text-right">Valor Recibido</th>
+                <th className="text-slate-500">Tipo</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={5} className="py-8 text-center text-slate-400">
                     Cargando historial...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={5} className="py-8 text-center text-slate-400">
                     No se encontraron recaudos.
                   </td>
                 </tr>
@@ -161,45 +161,45 @@ export default function Recaudos() {
                   const isAdelanto = (r.montoAdelantado || 0) > 0;
                   return (
                     <tr key={r.id} className="hover:bg-slate-50 transition group">
-                      <td className="px-6 py-4">
+                      <td>
                         <div className="flex flex-col">
-                          <span className="text-sm font-semibold text-slate-700">{formatDate(r.fechaPago)}</span>
+                          <span className="font-semibold text-slate-700">{formatDate(r.fechaPago)}</span>
                           <span className="text-[10px] text-slate-400">ID: {r.id.slice(-6)}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
-                            <User size={14} />
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-md bg-indigo-50 flex items-center justify-center text-indigo-600 flex-shrink-0">
+                            <User size={12} />
                           </div>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-bold text-slate-800">{r.clienteNombre}</span>
-                            <span className="text-xs text-slate-500">{r.carteraNombre}</span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-bold text-slate-800 truncate">{r.clienteNombre}</span>
+                            <span className="text-[11px] text-slate-500 truncate">{r.carteraNombre}</span>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <Calendar size={14} className="text-slate-400" />
-                          <span className="text-sm">{MESES[r.mes - 1]} {r.anio}</span>
+                      <td>
+                        <div className="flex items-center gap-1.5 text-slate-600">
+                          <Calendar size={12} className="text-slate-400 flex-shrink-0" />
+                          <span>{MESES[r.mes - 1]} {r.anio}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="text-right">
                         <div className="flex flex-col items-end">
-                          <span className={`text-sm font-bold ${r.esCortesia ? 'text-slate-400 line-through' : 'text-emerald-600'}`}>
+                          <span className={`font-bold ${r.esCortesia ? 'text-slate-400 line-through' : 'text-emerald-600'}`}>
                             {formatCOP(r.valorCobro + (r.montoAdelantado || 0))}
                           </span>
                           {r.esCortesia && (
                             <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-tighter">Cortesía</span>
                           )}
                           {isAdelanto && (
-                            <span className="text-[10px] font-medium text-indigo-500 bg-indigo-50 px-1.5 rounded">
+                            <span className="text-[10px] font-medium text-indigo-500 bg-indigo-50 px-1 rounded">
                               Incluye adelanto
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td>
                         {r.esPagoAdelantado ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">
                             ⏩ Adelantado

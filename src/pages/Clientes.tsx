@@ -118,7 +118,7 @@ export default function Clientes() {
   const Th = ({ label, col, center }: { label: string; col: SortKey; center?: boolean }) => (
     <th
       onClick={() => handleSort(col)}
-      className={`px-6 py-3.5 text-xs font-semibold text-white uppercase tracking-wider cursor-pointer select-none hover:bg-indigo-700 transition ${center ? 'text-center' : ''}`}
+      className={`text-white cursor-pointer select-none hover:bg-indigo-700 transition ${center ? 'text-center' : ''}`}
     >
       <span className="inline-flex items-center gap-1">
         {label} <SortIcon col={col} active={sortKey === col} dir={sortDir} />
@@ -167,14 +167,14 @@ export default function Clientes() {
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="data-table">
               <thead>
                 <tr className="bg-indigo-600 text-left">
                   <Th label="Cliente"   col="nombre" />
                   <Th label="Empresa"   col="empresa" />
                   <Th label="Carteras"  col="carteras" />
                   <Th label="Valor/mes" col="valor" />
-                  <th className="px-6 py-3.5 text-xs font-semibold text-white uppercase tracking-wider text-center">Acciones</th>
+                  <th className="text-white text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -185,9 +185,9 @@ export default function Clientes() {
                       className={`border-b border-slate-100 transition group hover:bg-indigo-50/40 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
 
                       {/* Nombre */}
-                      <td className="px-6 py-4">
-                        <Link to={`/clientes/${cliente.id}`} className="flex items-center gap-3 group/name">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-sm ${avatarColor(cliente.nombre)}`}>
+                      <td>
+                        <Link to={`/clientes/${cliente.id}`} className="flex items-center gap-2 group/name">
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-sm ${avatarColor(cliente.nombre)}`}>
                             {cliente.nombre.charAt(0).toUpperCase()}
                           </div>
                           <div>
@@ -202,8 +202,8 @@ export default function Clientes() {
                       </td>
 
                       {/* Contacto */}
-                      <td className="px-6 py-4">
-                        <div className="space-y-1">
+                      <td>
+                        <div className="space-y-0.5">
                           {cliente.empresa && (
                             <div className="flex items-center gap-1.5 text-slate-700 text-xs font-medium">
                               <Building2 size={11} className="text-slate-400" /> {cliente.empresa}
@@ -235,7 +235,7 @@ export default function Clientes() {
                       </td>
 
                       {/* Carteras */}
-                      <td className="px-6 py-4">
+                      <td>
                         {info.count === 0 ? (
                           <span className="text-slate-300 text-xs italic">Sin carteras</span>
                         ) : (
@@ -258,10 +258,10 @@ export default function Clientes() {
                       </td>
 
                       {/* Valor */}
-                      <td className="px-6 py-4">
+                      <td>
                         {info.total > 0 ? (
-                          <div className="flex items-center gap-1.5">
-                            <DollarSign size={14} className="text-emerald-500 flex-shrink-0" />
+                          <div className="flex items-center gap-1">
+                            <DollarSign size={12} className="text-emerald-500 flex-shrink-0" />
                             <span className="font-bold text-emerald-700 text-sm">{formatCOP(info.total)}</span>
                           </div>
                         ) : (
@@ -270,25 +270,25 @@ export default function Clientes() {
                       </td>
 
                       {/* Acciones */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
+                      <td>
+                        <div className="flex items-center gap-1">
                           <Link to={`/clientes/${cliente.id}`}
-                            className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center hover:bg-indigo-100 transition-all shadow-sm"
+                            className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center hover:bg-indigo-100 transition-all"
                             title="Ver detalles"
                           >
-                            <Eye size={16} />
+                            <Eye size={13} />
                           </Link>
                           <button onClick={() => openEditModal(cliente)}
-                            className="w-9 h-9 rounded-xl bg-slate-50 text-slate-500 border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition-all shadow-sm"
+                            className="w-7 h-7 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition-all"
                             title="Editar cliente"
                           >
-                            <Pencil size={15} />
+                            <Pencil size={13} />
                           </button>
                           <button onClick={() => handleDelete(cliente.id)} disabled={deletingId === cliente.id}
-                            className="w-9 h-9 rounded-xl bg-rose-50 text-rose-400 border border-rose-100 flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-all shadow-sm disabled:opacity-50"
+                            className="w-7 h-7 rounded-lg bg-rose-50 text-rose-400 border border-rose-100 flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-all disabled:opacity-50"
                             title="Eliminar cliente"
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>

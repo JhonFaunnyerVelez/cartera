@@ -120,14 +120,14 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="data-table">
               <thead>
                 <tr className="bg-slate-50 text-left">
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor mensual</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Vencimiento</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Días restantes</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Estado</th>
+                  <th className="text-slate-500">Cliente</th>
+                  <th className="text-slate-500">Valor mensual</th>
+                  <th className="text-slate-500">Vencimiento</th>
+                  <th className="text-slate-500">Días restantes</th>
+                  <th className="text-slate-500">Estado</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -136,24 +136,24 @@ export default function Dashboard() {
                   const cliente = clientes.find((c) => c.id === cartera.clienteId);
                   return (
                     <tr key={cartera.id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4">
-                        <p className="font-medium text-slate-800 text-sm">{cartera.clienteNombre || cliente?.nombre || '-'}</p>
-                        <p className="text-slate-400 text-xs">{cliente?.empresa || ''}</p>
+                      <td>
+                        <p className="font-medium text-slate-800">{cartera.clienteNombre || cliente?.nombre || '-'}</p>
+                        <p className="text-slate-400 text-[11px]">{cliente?.empresa || ''}</p>
                       </td>
-                      <td className="px-6 py-4 text-slate-700 text-sm font-medium">
+                      <td className="text-slate-700 font-medium">
                         {formatCOP(cartera.valorCartera)}
                       </td>
-                      <td className="px-6 py-4 text-slate-500 text-sm">
+                      <td className="text-slate-500">
                         {formatDateCurrentMonth(cartera.fechaVencimientoMensual)}
                       </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                      <td>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
                           dias === 0 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
                         }`}>
                           {dias === 0 ? '¡Hoy!' : `${dias} día${dias !== 1 ? 's' : ''}`}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td>
                         <Badge estado={cartera.estado} />
                       </td>
                     </tr>
@@ -178,13 +178,13 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="data-table">
               <thead>
                 <tr className="bg-slate-50 text-left">
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor mensual</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Venció</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Días en mora</th>
+                  <th className="text-slate-500">Cliente</th>
+                  <th className="text-slate-500">Valor mensual</th>
+                  <th className="text-slate-500">Venció</th>
+                  <th className="text-slate-500">Días en mora</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -193,14 +193,14 @@ export default function Dashboard() {
                   const cliente = clientes.find((c) => c.id === cartera.clienteId);
                   return (
                     <tr key={cartera.id} className="hover:bg-rose-50/30 transition">
-                      <td className="px-6 py-4">
-                        <p className="font-medium text-slate-800 text-sm">{cartera.clienteNombre || cliente?.nombre || '-'}</p>
-                        <p className="text-slate-400 text-xs">{cliente?.empresa || ''}</p>
+                      <td>
+                        <p className="font-medium text-slate-800">{cartera.clienteNombre || cliente?.nombre || '-'}</p>
+                        <p className="text-slate-400 text-[11px]">{cliente?.empresa || ''}</p>
                       </td>
-                      <td className="px-6 py-4 text-slate-700 text-sm font-medium">{formatCOP(cartera.valorCartera)}</td>
-                      <td className="px-6 py-4 text-slate-500 text-sm">{formatDateCurrentMonth(cartera.fechaVencimientoMensual)}</td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
+                      <td className="text-slate-700 font-medium">{formatCOP(cartera.valorCartera)}</td>
+                      <td className="text-slate-500">{formatDateCurrentMonth(cartera.fechaVencimientoMensual)}</td>
+                      <td>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">
                           {diasVencidos} día{diasVencidos !== 1 ? 's' : ''}
                         </span>
                       </td>

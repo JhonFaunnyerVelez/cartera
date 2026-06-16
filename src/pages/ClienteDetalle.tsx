@@ -201,16 +201,16 @@ export default function ClienteDetalle() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="data-table">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100 text-left">
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cartera</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor mensual</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Costo total</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Vencimiento</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Renovación</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Estado</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Acciones</th>
+                  <th className="text-slate-500">Cartera</th>
+                  <th className="text-slate-500">Valor mensual</th>
+                  <th className="text-slate-500">Costo total</th>
+                  <th className="text-slate-500">Vencimiento</th>
+                  <th className="text-slate-500">Renovación</th>
+                  <th className="text-slate-500">Estado</th>
+                  <th className="text-slate-500">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -218,21 +218,21 @@ export default function ClienteDetalle() {
                   const dias = diasParaVencer(cartera.fechaVencimientoMensual);
                   return (
                     <tr key={cartera.id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4 font-bold text-slate-800 text-sm">
+                      <td className="font-bold text-slate-800">
                         {cartera.nombre || 'Sin nombre'}
                       </td>
-                      <td className="px-6 py-4 font-semibold text-slate-700 text-sm">{formatCOP(cartera.valorCartera)}</td>
-                      <td className="px-6 py-4 text-slate-500 text-sm">{formatCOP(cartera.costoTotal)}</td>
-                      <td className="px-6 py-4">
-                        <p className="text-slate-700 text-sm">{formatDate(cartera.fechaVencimientoMensual)}</p>
+                      <td className="font-semibold text-slate-700">{formatCOP(cartera.valorCartera)}</td>
+                      <td className="text-slate-500">{formatCOP(cartera.costoTotal)}</td>
+                      <td>
+                        <p className="text-slate-700">{formatDate(cartera.fechaVencimientoMensual)}</p>
                       </td>
-                      <td className="px-6 py-4 text-slate-500 text-sm">{formatDate(cartera.fechaRenovacion)}</td>
-                      <td className="px-6 py-4">
+                      <td className="text-slate-500">{formatDate(cartera.fechaRenovacion)}</td>
+                      <td>
                         {(() => {
                           const cobroMes = cobros.find(c => c.carteraId === cartera.id);
                           if (cobroMes?.estado === 'Pagado') {
                             return (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Pagado
                               </span>
                             );
@@ -241,7 +241,7 @@ export default function ClienteDetalle() {
                           // Si no está pagado, mostramos los días o el badge original
                           if (dias >= 0 && dias <= 5) {
                             return (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> 
                                 {dias === 0 ? 'Vence hoy' : `Faltan ${dias} días`}
                               </span>
@@ -249,7 +249,7 @@ export default function ClienteDetalle() {
                           }
                           if (dias < 0) {
                             return (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 border border-rose-200">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-700 border border-rose-200">
                                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> 
                                 Venció hace {Math.abs(dias)} días
                               </span>
@@ -260,8 +260,8 @@ export default function ClienteDetalle() {
                           return <Badge estado={cartera.estado} />;
                         })()}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5">
+                      <td>
+                        <div className="flex items-center gap-1">
                           {(() => {
                             const cobro = cobros.find(c => c.carteraId === cartera.id);
                             if (!cobro) return null;
@@ -275,12 +275,12 @@ export default function ClienteDetalle() {
                                   onClick={() => handlePago(cobro, isPagado)}
                                   disabled={isLoading}
                                   title={isPagado ? 'Revertir pago' : 'Registrar pago'}
-                                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm
+                                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all
                                     ${isPagado 
                                       ? 'bg-rose-50 text-rose-500 hover:bg-rose-100 ring-1 ring-rose-200' 
                                       : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 ring-1 ring-emerald-200'}`}
                                 >
-                                  {isLoading ? <RefreshCw size={14} className="animate-spin" /> : isPagado ? <XCircle size={16} /> : <CheckCircle2 size={16} />}
+                                  {isLoading ? <RefreshCw size={12} className="animate-spin" /> : isPagado ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
                                 </button>
 
                                 {/* Cortesia */}
@@ -289,9 +289,9 @@ export default function ClienteDetalle() {
                                     onClick={() => handleCortesia(cobro)}
                                     disabled={isLoading}
                                     title="Cortesia ($0)"
-                                    className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 ring-1 ring-indigo-200 flex items-center justify-center transition-all shadow-sm"
+                                    className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 ring-1 ring-indigo-200 flex items-center justify-center transition-all"
                                   >
-                                    <Gift size={16} />
+                                    <Gift size={14} />
                                   </button>
                                 )}
                               </>
@@ -301,9 +301,9 @@ export default function ClienteDetalle() {
                           <button
                             onClick={() => openEditCartera(cartera)}
                             title="Editar configuración"
-                            className="w-9 h-9 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 ring-1 ring-slate-200 flex items-center justify-center transition-all shadow-sm"
+                            className="w-7 h-7 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100 ring-1 ring-slate-200 flex items-center justify-center transition-all"
                           >
-                            <Pencil size={14} />
+                            <Pencil size={12} />
                           </button>
                         </div>
                       </td>
@@ -340,30 +340,30 @@ export default function ClienteDetalle() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="data-table">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100 text-left">
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fecha de Pago</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cartera</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Periodo</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide text-right">Valor</th>
+                  <th className="text-slate-500">Fecha de Pago</th>
+                  <th className="text-slate-500">Cartera</th>
+                  <th className="text-slate-500">Periodo</th>
+                  <th className="text-slate-500 text-right">Valor</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {historial.map((pago) => (
                   <tr key={pago.id} className="hover:bg-slate-50 transition">
-                    <td className="px-6 py-4 text-sm text-slate-700">
+                    <td className="text-slate-700">
                       <div className="font-medium">{pago.fechaPago ? formatDate(pago.fechaPago) : '—'}</div>
                       <div className="text-[10px] text-slate-400 font-mono">#{pago.id.slice(-6)}</div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 font-medium">
+                    <td className="text-slate-600 font-medium">
                       {pago.carteraNombre}
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-500">
+                    <td className="text-slate-500">
                       {MESES[pago.mes - 1]} {pago.anio}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="text-sm font-bold text-emerald-600">
+                    <td className="text-right">
+                      <div className="font-bold text-emerald-600">
                         {formatCOP(pago.valorCobro + (pago.montoAdelantado || 0))}
                       </div>
                       {(pago.montoAdelantado || 0) > 0 && (

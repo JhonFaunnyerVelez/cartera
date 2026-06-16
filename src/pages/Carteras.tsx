@@ -72,16 +72,16 @@ function CobroRow({
         : 'hover:bg-indigo-50/40'}`}>
 
       {/* Día del mes */}
-      <td className="px-4 py-3.5 w-14 text-center">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center mx-auto font-bold text-sm
+      <td className="w-10 text-center">
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center mx-auto font-bold text-xs
           ${isMora ? 'bg-rose-100 text-rose-700' : isPagado ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
           {cobro.fechaVencimiento?.toDate?.()?.getDate() ?? '—'}
         </div>
       </td>
 
       {/* CARTERA arriba (bold) · Cliente + Empresa abajo (pequeño) */}
-      <td className="px-4 py-3.5 min-w-[180px]">
-        <p className={`font-bold text-sm leading-tight ${isPagado ? 'text-slate-500' : 'text-slate-800'}`}>
+      <td className="min-w-[160px]">
+        <p className={`font-bold leading-tight ${isPagado ? 'text-slate-500' : 'text-slate-800'}`}>
           {cobro.carteraNombre || 'Sin nombre'}
         </p>
         <Link
@@ -104,9 +104,9 @@ function CobroRow({
       </td>
 
       {/* Valor */}
-      <td className="px-4 py-3.5">
+      <td>
         <div className="flex flex-col justify-center">
-          <span className={`font-bold text-sm ${
+          <span className={`font-bold ${
             cobro.esCortesia 
               ? 'text-slate-400 line-through' 
               : isPagado ? 'text-emerald-600' : isMora ? 'text-rose-600' : 'text-slate-800'
@@ -125,44 +125,44 @@ function CobroRow({
       </td>
 
       {/* Fecha vencimiento */}
-      <td className="px-4 py-3.5 text-slate-500 text-sm">{formatDate(cobro.fechaVencimiento)}</td>
+      <td className="text-slate-500">{formatDate(cobro.fechaVencimiento)}</td>
 
       {/* Fecha de pago */}
-      <td className="px-4 py-3.5 text-slate-400 text-xs">
+      <td className="text-slate-400 text-[11px]">
         {isPagado ? formatDateFull(cobro.fechaPago) : '—'}
       </td>
 
       {/* Estado */}
-      <td className="px-4 py-3.5">
+      <td>
         {isPagado ? (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Pagado
           </span>
         ) : isMora ? (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 border border-rose-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-700 border border-rose-200">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> En mora
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Pendiente
           </span>
         )}
       </td>
 
       {/* Acciones — siempre visibles y mejor organizadas */}
-      <td className="px-4 py-3.5">
-        <div className="flex items-center gap-1.5">
+      <td>
+        <div className="flex items-center gap-1">
           {/* Botón Pago Normal */}
           <button
             onClick={() => onPago(cobro, isPagado)}
             disabled={isLoading}
             title={isPagado ? 'Revertir pago' : 'Registrar pago'}
-            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm
+            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all
               ${isPagado 
                 ? 'bg-rose-50 text-rose-500 hover:bg-rose-100 ring-1 ring-rose-200' 
                 : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 ring-1 ring-emerald-200'}`}
           >
-            {isLoading ? <RefreshCw size={14} className="animate-spin" /> : isPagado ? <XCircle size={16} /> : <CheckCircle2 size={16} />}
+            {isLoading ? <RefreshCw size={12} className="animate-spin" /> : isPagado ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
           </button>
 
           {/* Botón Cortesia (solo si está pendiente) */}
@@ -171,9 +171,9 @@ function CobroRow({
               onClick={() => onCortesia(cobro)}
               disabled={isLoading}
               title="Registrar como Cortesía ($0)"
-              className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all shadow-sm ring-1 ring-indigo-200 flex items-center justify-center"
+              className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all ring-1 ring-indigo-200 flex items-center justify-center"
             >
-              <Gift size={16} />
+              <Gift size={14} />
             </button>
           )}
 
@@ -183,9 +183,9 @@ function CobroRow({
               onClick={() => onPagoAdelanto(cartera)} 
               disabled={isLoading}
               title="Adelantar pagos"
-              className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 hover:bg-purple-100 transition-all shadow-sm ring-1 ring-purple-200 flex items-center justify-center"
+              className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-all ring-1 ring-purple-200 flex items-center justify-center"
             >
-              <CalendarDays size={16} />
+              <CalendarDays size={14} />
             </button>
           )}
 
@@ -194,9 +194,9 @@ function CobroRow({
             <button 
               onClick={() => onEdit(cartera)} 
               title="Editar configuración"
-              className="w-9 h-9 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 transition-all shadow-sm ring-1 ring-slate-200 flex items-center justify-center"
+              className="w-7 h-7 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100 transition-all ring-1 ring-slate-200 flex items-center justify-center"
             >
-              <Pencil size={14} />
+              <Pencil size={12} />
             </button>
           )}
 
@@ -205,9 +205,9 @@ function CobroRow({
             <button 
               onClick={() => onDelete(cartera.id)} 
               title="Eliminar cartera"
-              className="w-9 h-9 rounded-xl bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 transition-all shadow-sm ring-1 ring-rose-100 flex items-center justify-center"
+              className="w-7 h-7 rounded-lg bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 transition-all ring-1 ring-rose-100 flex items-center justify-center"
             >
-              <Trash2 size={14} />
+              <Trash2 size={12} />
             </button>
           )}
         </div>
@@ -256,16 +256,16 @@ function CobroTable({ cobros, carteras, clientes, onPago, onCortesia, onEdit, on
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="data-table">
           <thead>
             <tr className="bg-indigo-600 text-left">
-              <th className="px-4 py-3.5 text-xs font-semibold text-white uppercase tracking-wider w-14 text-center">Día</th>
-              <th className="px-4 py-3.5 text-xs font-semibold text-white uppercase tracking-wider">Cartera / Cliente</th>
-              <th className="px-4 py-3.5 text-xs font-semibold text-white uppercase tracking-wider">Valor</th>
-              <th className="px-4 py-3.5 text-xs font-semibold text-white uppercase tracking-wider">Vencimiento</th>
-              <th className="px-4 py-3.5 text-xs font-semibold text-white uppercase tracking-wider">Pagado el</th>
-              <th className="px-4 py-3.5 text-xs font-semibold text-white uppercase tracking-wider">Estado</th>
-              <th className="px-4 py-3.5 text-xs font-semibold text-white uppercase tracking-wider">Acciones</th>
+              <th className="text-white w-10 text-center">Día</th>
+              <th className="text-white">Cartera / Cliente</th>
+              <th className="text-white">Valor</th>
+              <th className="text-white">Vencimiento</th>
+              <th className="text-white">Pagado el</th>
+              <th className="text-white">Estado</th>
+              <th className="text-white">Acciones</th>
             </tr>
           </thead>
           <tbody>

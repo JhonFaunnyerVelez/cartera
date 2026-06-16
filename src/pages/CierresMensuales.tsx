@@ -201,15 +201,15 @@ export default function CierresMensuales() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="data-table">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100 text-left">
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Período</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Recaudado</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">En mora</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Carteras</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ejecutado por</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fecha de cierre</th>
+                  <th className="text-slate-500">Período</th>
+                  <th className="text-slate-500">Recaudado</th>
+                  <th className="text-slate-500">En mora</th>
+                  <th className="text-slate-500">Carteras</th>
+                  <th className="text-slate-500">Ejecutado por</th>
+                  <th className="text-slate-500">Fecha de cierre</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -218,28 +218,27 @@ export default function CierresMensuales() {
                   const pct = total > 0 ? Math.round((cierre.totalRecaudado / total) * 100) : 0;
                   return (
                     <tr key={cierre.id} className="hover:bg-slate-50/70 transition">
-                      <td className="px-6 py-4">
-                        <p className="font-semibold text-slate-800 text-sm">
+                      <td>
+                        <p className="font-semibold text-slate-800">
                           {MESES[cierre.mes - 1]} {cierre.anio}
                         </p>
-                        <p className="text-slate-400 text-xs mt-0.5">Período {cierre.id}</p>
+                        <p className="text-slate-400 text-[11px]">Período {cierre.id}</p>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="font-bold text-emerald-600 text-sm">{formatCOP(cierre.totalRecaudado)}</p>
-                        {/* Barra de progreso de recaudo */}
-                        <div className="w-24 h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
+                      <td>
+                        <p className="font-bold text-emerald-600">{formatCOP(cierre.totalRecaudado)}</p>
+                        <div className="w-20 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden">
                           <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
                         </div>
-                        <p className="text-slate-400 text-xs mt-0.5">{pct}% del total</p>
+                        <p className="text-slate-400 text-[11px]">{pct}% del total</p>
                       </td>
-                      <td className="px-6 py-4 font-semibold text-rose-500 text-sm">{formatCOP(cierre.totalMora)}</td>
-                      <td className="px-6 py-4">
-                        <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                      <td className="font-semibold text-rose-500">{formatCOP(cierre.totalMora)}</td>
+                      <td>
+                        <span className="bg-indigo-100 text-indigo-700 text-[11px] font-bold px-2 py-0.5 rounded-full">
                           {cierre.cantidadCarterasActivas}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-slate-500 text-sm">{cierre.ejecutadoPor}</td>
-                      <td className="px-6 py-4 text-slate-400 text-sm">
+                      <td className="text-slate-500">{cierre.ejecutadoPor}</td>
+                      <td className="text-slate-400">
                         {cierre.fechaEjecucionCierre?.toDate?.()?.toLocaleDateString('es-CO', {
                           day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
                         }) || '—'}
