@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Cartera } from '../types';
+import { esCarteraActiva } from '../utils/activo';
 
 function sumarMeses(mes: number, anio: number, n: number): { mes: number; anio: number } {
   let m = mes + n;
@@ -41,6 +42,9 @@ export async function registrarPagoAdelantado(
   cantidadMeses: number,
   fechaPago: Date = new Date()
 ): Promise<PagoAdelantoResult> {
+  if (!esCarteraActiva(cartera)) {
+    throw new Error('No se puede adelantar pagos de una cartera inactiva.');
+  }
   const batch = writeBatch(db);
   const periodos: string[] = [];
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Timestamp } from 'firebase/firestore';
 import { useCarteras } from '../../hooks/useCarteras';
 import type { Cliente, Cartera } from '../../types';
+import { esClienteActivo } from '../../utils/activo';
 
 interface CarteraFormProps {
   onClose: () => void;
@@ -25,7 +26,9 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
   const [error, setError] = useState('');
 
   // Ordenar clientes alfabéticamente para el desplegable
-  const clientesOrdenados = [...clientes].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const clientesOrdenados = [...clientes]
+    .filter(c => esClienteActivo(c) || c.id === initial?.clienteId || c.id === defaultClienteId)
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 
   const [form, setForm] = useState({
     nombre: initial?.nombre || '',

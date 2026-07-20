@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Cartera, EstadoCartera } from '../types';
+import { setCarteraActiva as setCarteraActivaService } from '../services/activacion';
 
 export function calcularEstado(fechaVencimientoMensual: Timestamp): EstadoCartera {
   const hoy = new Date();
@@ -98,6 +99,7 @@ export function useCarteras() {
     batch.set(carteraRef, {
       ...data,
       estado,
+      activa: true,
       fechaCreacion: serverTimestamp(),
     });
 
@@ -164,5 +166,9 @@ export function useCarteras() {
     await deleteDoc(doc(db, 'carteras', id));
   };
 
-  return { carteras, loading, error, addCartera, updateCartera, deleteCartera };
+  const setCarteraActiva = async (id: string, activa: boolean) => {
+    await setCarteraActivaService(id, activa);
+  };
+
+  return { carteras, loading, error, addCartera, updateCartera, deleteCartera, setCarteraActiva };
 }

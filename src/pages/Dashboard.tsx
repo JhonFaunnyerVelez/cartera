@@ -6,6 +6,7 @@ import { useCarteras, diasParaVencer } from '../hooks/useCarteras';
 import StatCard from '../components/ui/StatCard';
 import Badge from '../components/ui/Badge';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import { esCarteraActiva } from '../utils/activo';
 
 function formatCOP(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value);
@@ -25,28 +26,30 @@ export default function Dashboard() {
   const { clientes, loading: loadingClientes } = useClientes();
   const { carteras, loading: loadingCarteras } = useCarteras();
 
+  const carterasActivas = useMemo(() => carteras.filter(esCarteraActiva), [carteras]);
+
   // ── KPI 1: Deudas pendientes (suma de valorCartera de carteras en Mora) ──
   const deudasPendientes = useMemo(() =>
-    carteras
+    carterasActivas
       .filter((c) => c.estado === 'Mora')
       .reduce((sum, c) => sum + c.valorCartera, 0),
-    [carteras]
+    [carterasActivas]
   );
 
   // ── KPI 2: Acumulado del mes (suma de carteras 'Al día' como ingreso estimado) ──
   const acumuladoMes = useMemo(() =>
-    carteras
+    carterasActivas
       .filter((c) => c.estado === 'Al día' || c.estado === 'Próximo a vencer')
       .reduce((sum, c) => sum + c.valorCartera, 0),
-    [carteras]
+    [carterasActivas]
   );
 
   // ── KPI 3: Total clientes activos ──
-  const totalClientes = clientes.length;
+  const totalClientes = clientes.filter(c => c.activo !== false).length;
 
   // ── Tabla: Próximos a vencer (≤ 5 días y no vencidos) ──
   const proximosAVencer = useMemo(() => {
-    return carteras
+    return carterasActivas
       .filter((c) => {
         const dias = diasParaVencer(c.fechaVencimientoMensual);
         return dias >= 0 && dias <= 5;
@@ -54,10 +57,10 @@ export default function Dashboard() {
       .sort((a, b) =>
         diasParaVencer(a.fechaVencimientoMensual) - diasParaVencer(b.fechaVencimientoMensual)
       );
-  }, [carteras]);
+  }, [carterasActivas]);
 
   // ── Carteras en mora ──
-  const enMora = useMemo(() => carteras.filter((c) => c.estado === 'Mora'), [carteras]);
+  const enMora = useMemo(() => carterasActivas.filter((c) => c.estado === 'Mora'), [carterasActivas]);
 
   if (loadingClientes || loadingCarteras) return <LoadingSpinner />;
 
@@ -76,7 +79,7 @@ export default function Dashboard() {
         <StatCard
           title="Acumulado estimado del mes"
           value={formatCOP(acumuladoMes)}
-          subtitle={`${carteras.filter(c => c.estado !== 'Mora').length} carteras activas`}
+          subtitle={`${carterasActivas.filter(c => c.estado !== 'Mora').length} carteras activas`}
           icon={DollarSign}
           color="emerald"
         />
@@ -90,7 +93,7 @@ export default function Dashboard() {
         <StatCard
           title="Clientes activos"
           value={totalClientes}
-          subtitle={`${carteras.length} cartera${carteras.length !== 1 ? 's' : ''} registradas`}
+          subtitle={`${carterasActivas.length} cartera${carterasActivas.length !== 1 ? 's' : ''} registradas`}
           icon={Users}
           color="indigo"
         />

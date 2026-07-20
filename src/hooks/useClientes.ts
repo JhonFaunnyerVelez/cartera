@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Cliente } from '../types';
+import { setClienteActivo as setClienteActivoService } from '../services/activacion';
 
 export function useClientes() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -40,6 +41,7 @@ export function useClientes() {
   const addCliente = async (data: Omit<Cliente, 'id' | 'fechaCreacion'>) => {
     await addDoc(collection(db, 'clientes'), {
       ...data,
+      activo: true,
       fechaCreacion: serverTimestamp(),
     });
   };
@@ -52,5 +54,9 @@ export function useClientes() {
     await deleteDoc(doc(db, 'clientes', id));
   };
 
-  return { clientes, loading, error, addCliente, updateCliente, deleteCliente };
+  const setClienteActivo = async (id: string, activo: boolean) => {
+    await setClienteActivoService(id, activo);
+  };
+
+  return { clientes, loading, error, addCliente, updateCliente, deleteCliente, setClienteActivo };
 }

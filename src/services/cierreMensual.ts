@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { CobroMensual, Cartera } from '../types';
+import { esCarteraActiva } from '../utils/activo';
 
 export interface CierreResult {
   totalRecaudado: number;
@@ -132,6 +133,7 @@ export async function ejecutarCierreMensual(
   const carterasConCobro = new Set(cobrosExistSnap.docs.map((d) => d.data().carteraId));
 
   for (const cartera of carteras) {
+    if (!esCarteraActiva(cartera)) continue;
     // Omitir carteras que ya tienen cobro generado para el mes siguiente
     if (carterasConCobro.has(cartera.id)) continue;
 
@@ -188,6 +190,7 @@ export async function generarCobrosParaMes(mes: number, anio: number): Promise<n
 
   let count = 0;
   for (const cartera of carteras) {
+    if (!esCarteraActiva(cartera)) continue;
     if (yaExisten.has(cartera.id)) continue;
 
     const ref = doc(collection(db, 'cobros_mensuales'));

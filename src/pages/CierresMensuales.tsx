@@ -33,9 +33,9 @@ function ConfirmModal({
 }) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" style={{ animation: 'modalIn 0.2s ease-out' }}>
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-md max-h-[92dvh] overflow-y-auto p-4 sm:p-6" style={{ animation: 'modalIn 0.2s ease-out' }}>
         <div className="flex items-start gap-4 mb-5">
           <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
             <AlertCircle size={22} className="text-rose-600" />
@@ -56,13 +56,13 @@ function ConfirmModal({
             <li>Se generarán automáticamente los cobros del mes siguiente</li>
           </ul>
         </div>
-        <div className="flex gap-3">
-          <button onClick={onClose} disabled={loading}
-            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition disabled:opacity-50">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button type="button" onClick={onClose} disabled={loading}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition disabled:opacity-50 order-2 sm:order-1">
             Cancelar
           </button>
-          <button onClick={onConfirm} disabled={loading}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition disabled:opacity-60">
+          <button type="button" onClick={onConfirm} disabled={loading}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition disabled:opacity-60 order-1 sm:order-2">
             {loading ? (
               <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Ejecutando...</>
             ) : (

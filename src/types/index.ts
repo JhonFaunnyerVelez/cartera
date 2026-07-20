@@ -9,6 +9,8 @@ export interface Cliente {
   pais: string;
   whatsapp?: string;
   fechaCreacion: Timestamp;
+  activo?: boolean;
+  fechaInactivacion?: Timestamp | null;
 }
 
 // ─── CARTERAS ─────────────────────────────────────────────────────────────────
@@ -25,6 +27,8 @@ export interface Cartera {
   fechaRenovacion: Timestamp;
   fechaVencimientoMensual: Timestamp;
   estado: EstadoCartera;
+  activa?: boolean;
+  fechaInactivacion?: Timestamp | null;
 }
 
 export interface CarteraConCliente extends Cartera {

@@ -46,19 +46,21 @@ export default function ConfirmModal({
         <h3 className="text-xl font-bold text-slate-800 mb-2">{title}</h3>
         <p className="text-slate-500 mb-8 max-w-xs">{message}</p>
         
-        <div className="flex gap-3 w-full">
+        <div className="flex flex-col sm:flex-row gap-3 w-full">
           <button
+            type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition"
+            className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition order-2 sm:order-1"
           >
             {cancelText}
           </button>
           <button
+            type="button"
             onClick={() => {
               onConfirm();
               onClose();
             }}
-            className={`flex-1 px-4 py-3 rounded-xl text-white font-semibold transition shadow-sm ${buttonClass}`}
+            className={`flex-1 px-4 py-3 rounded-xl text-white font-semibold transition shadow-sm order-1 sm:order-2 ${buttonClass}`}
           >
             {confirmText}
           </button>

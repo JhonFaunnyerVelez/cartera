@@ -4,6 +4,7 @@ import {
   UserPlus, Search, Users, ChevronRight,
   Building2, Globe, MapPin, Pencil, Trash2,
   Briefcase, DollarSign, Phone, ChevronUp, ChevronDown, ChevronsUpDown, Eye,
+  UserX, UserCheck,
 } from 'lucide-react';
 import { useClientes } from '../hooks/useClientes';
 import { useCarteras } from '../hooks/useCarteras';
@@ -12,6 +13,7 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import ClienteForm from '../components/clientes/ClienteForm';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import type { Cliente } from '../types';
+import { esCarteraActiva, esClienteActivo } from '../utils/activo';
 
 function formatCOP(v: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
@@ -36,7 +38,7 @@ function SortIcon({ active, dir }: { col: string; active: boolean; dir: SortDir 
 }
 
 export default function Clientes() {
-  const { clientes, loading: loadingClientes, deleteCliente } = useClientes();
+  const { clientes, loading: loadingClientes, deleteCliente, setClienteActivo } = useClientes();
   const { carteras, loading: loadingCarteras } = useCarteras();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
@@ -62,6 +64,7 @@ export default function Clientes() {
   const carterasPorCliente = useMemo(() => {
     const map: Record<string, { count: number; total: number; nombres: string[] }> = {};
     for (const c of carteras) {
+      if (!esCarteraActiva(c)) continue;
       if (!map[c.clienteId]) map[c.clienteId] = { count: 0, total: 0, nombres: [] };
       map[c.clienteId].count++;
       map[c.clienteId].total += c.valorCartera;
@@ -110,9 +113,25 @@ export default function Clientes() {
     });
   };
 
+  const handleToggleCliente = (cliente: Cliente) => {
+    const activo = esClienteActivo(cliente);
+    setConfirmConfig({
+      isOpen: true,
+      title: activo ? '¿Desactivar cliente?' : '¿Reactivar cliente?',
+      message: activo
+        ? `Se desactivará a "${cliente.nombre}" y todas sus carteras. No aparecerán en cobros futuros, pero el historial se conserva.`
+        : `Se reactivará a "${cliente.nombre}" y todas sus carteras. Se generará el cobro del mes actual si corresponde.`,
+      type: activo ? 'danger' : 'success',
+      onConfirm: async () => {
+        await setClienteActivo(cliente.id, !activo);
+      },
+    });
+  };
+
   if (loadingClientes || loadingCarteras) return <LoadingSpinner />;
 
-  const totalValor = carteras.reduce((s, c) => s + c.valorCartera, 0);
+  const totalValor = carteras.filter(esCarteraActiva).reduce((s, c) => s + c.valorCartera, 0);
+  const carterasActivasCount = carteras.filter(esCarteraActiva).length;
 
   // Helper para el th ordenable
   const Th = ({ label, col, center }: { label: string; col: SortKey; center?: boolean }) => (
@@ -134,7 +153,7 @@ export default function Clientes() {
           <h2 className="text-2xl font-bold text-slate-800">Clientes</h2>
           <p className="text-slate-500 text-sm mt-1">
             {clientes.length} cliente{clientes.length !== 1 ? 's' : ''} ·{' '}
-            {carteras.length} cartera{carteras.length !== 1 ? 's' : ''} ·{' '}
+            {carterasActivasCount} cartera{carterasActivasCount !== 1 ? 's' : ''} activa{carterasActivasCount !== 1 ? 's' : ''} ·{' '}
             <span className="font-semibold text-indigo-600">{formatCOP(totalValor)}/mes</span>
           </p>
         </div>
@@ -182,7 +201,7 @@ export default function Clientes() {
                   const info = carterasPorCliente[cliente.id] ?? { count: 0, total: 0, nombres: [] };
                   return (
                     <tr key={cliente.id}
-                      className={`border-b border-slate-100 transition group hover:bg-indigo-50/40 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                      className={`border-b border-slate-100 transition group hover:bg-indigo-50/40 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${!esClienteActivo(cliente) ? 'opacity-60' : ''}`}>
 
                       {/* Nombre */}
                       <td>
@@ -193,6 +212,9 @@ export default function Clientes() {
                           <div>
                             <p className="font-semibold text-slate-800 text-sm group-hover/name:text-indigo-600 transition leading-tight">
                               {cliente.nombre}
+                              {!esClienteActivo(cliente) && (
+                                <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">Inactivo</span>
+                              )}
                             </p>
                             <span className="text-slate-400 text-xs flex items-center gap-0.5 mt-0.5">
                               Ver detalle <ChevronRight size={11} className="opacity-0 group-hover/name:opacity-100 transition" />
@@ -283,6 +305,16 @@ export default function Clientes() {
                             title="Editar cliente"
                           >
                             <Pencil size={13} />
+                          </button>
+                          <button onClick={() => handleToggleCliente(cliente)}
+                            className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${
+                              esClienteActivo(cliente)
+                                ? 'bg-amber-50 text-amber-600 border-amber-100 hover:bg-amber-100'
+                                : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'
+                            }`}
+                            title={esClienteActivo(cliente) ? 'Desactivar cliente' : 'Reactivar cliente'}
+                          >
+                            {esClienteActivo(cliente) ? <UserX size={13} /> : <UserCheck size={13} />}
                           </button>
                           <button onClick={() => handleDelete(cliente.id)} disabled={deletingId === cliente.id}
                             className="w-7 h-7 rounded-lg bg-rose-50 text-rose-400 border border-rose-100 flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-all disabled:opacity-50"

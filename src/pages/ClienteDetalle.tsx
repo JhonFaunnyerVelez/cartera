@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Building2, Globe, MapPin, Briefcase, Plus, Calendar, TrendingUp, Gift, XCircle, CheckCircle2, RefreshCw, Pencil } from 'lucide-react';
+import { ArrowLeft, Building2, Globe, MapPin, Briefcase, Plus, Calendar, TrendingUp, Gift, XCircle, CheckCircle2, RefreshCw, Pencil, UserX, UserCheck, Power, PowerOff } from 'lucide-react';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useClientes } from '../hooks/useClientes';
@@ -12,6 +12,13 @@ import CarteraForm from '../components/carteras/CarteraForm';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { useState, useMemo, useEffect } from 'react';
 import type { Cartera, CobroMensual } from '../types';
+import { esCarteraActiva, esClienteActivo } from '../utils/activo';
+import {
+  BadgePagoAnticipado,
+  ValorConAdelanto,
+  clasesFilaAdelanto,
+  etiquetaMesRecibido,
+} from '../components/carteras/AdelantoIndicators';
 
 function formatCOP(v: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
@@ -23,8 +30,8 @@ function formatDate(ts: any) {
 
 export default function ClienteDetalle() {
   const { id } = useParams<{ id: string }>();
-  const { clientes, loading: loadingClientes } = useClientes();
-  const { carteras, loading: loadingCarteras } = useCarteras();
+  const { clientes, loading: loadingClientes, setClienteActivo } = useClientes();
+  const { carteras, loading: loadingCarteras, setCarteraActiva } = useCarteras();
   const hoy = new Date();
   const { cobros, registrarPago, registrarCortesia, revertirPago } = useCobros(hoy.getMonth() + 1, hoy.getFullYear());
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -107,6 +114,36 @@ export default function ClienteDetalle() {
     });
   };
 
+  const handleToggleCliente = () => {
+    const activo = esClienteActivo(cliente!);
+    setConfirmConfig({
+      isOpen: true,
+      title: activo ? '¿Desactivar cliente?' : '¿Reactivar cliente?',
+      message: activo
+        ? `Se desactivará a "${cliente!.nombre}" y todas sus carteras. No aparecerán en cobros futuros, pero el historial de meses anteriores se conserva.`
+        : `Se reactivará a "${cliente!.nombre}" y todas sus carteras. Se generará el cobro del mes actual si corresponde.`,
+      type: activo ? 'danger' : 'success',
+      onConfirm: async () => {
+        await setClienteActivo(cliente!.id, !activo);
+      },
+    });
+  };
+
+  const handleToggleCartera = (cartera: Cartera) => {
+    const activa = esCarteraActiva(cartera);
+    setConfirmConfig({
+      isOpen: true,
+      title: activa ? '¿Desactivar cartera?' : '¿Reactivar cartera?',
+      message: activa
+        ? `"${cartera.nombre}" dejará de aparecer en cobros futuros. Los meses anteriores con deuda o pagos se conservan.`
+        : `"${cartera.nombre}" volverá a generar cobros. Se creará el cobro del mes actual si no existe.`,
+      type: activa ? 'danger' : 'success',
+      onConfirm: async () => {
+        await setCarteraActiva(cartera.id, !activa);
+      },
+    });
+  };
+
   if (loadingClientes || loadingCarteras) return <LoadingSpinner />;
 
   if (!cliente) {
@@ -118,7 +155,9 @@ export default function ClienteDetalle() {
     );
   }
 
-  const totalCartera = carterasCliente.reduce((sum, c) => sum + c.valorCartera, 0);
+  const totalCartera = carterasCliente.filter(esCarteraActiva).reduce((sum, c) => sum + c.valorCartera, 0);
+  const carterasActivasCount = carterasCliente.filter(esCarteraActiva).length;
+  const clienteActivo = esClienteActivo(cliente);
 
   return (
     <div className="space-y-6">
@@ -131,12 +170,27 @@ export default function ClienteDetalle() {
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="h-24 bg-gradient-to-r from-indigo-500 to-purple-600" />
         <div className="px-6 pb-6">
-          <div className="-mt-12 mb-4">
-            <div className="w-20 h-20 rounded-2xl bg-white border-4 border-white shadow-lg flex items-center justify-center text-indigo-600 font-bold text-3xl">
+          <div className="flex items-start justify-between gap-4 -mt-12 mb-4">
+            <div className="w-20 h-20 rounded-2xl bg-white border-4 border-white shadow-lg flex items-center justify-center text-indigo-600 font-bold text-3xl flex-shrink-0">
               {cliente.nombre.charAt(0).toUpperCase()}
             </div>
+            <button
+              onClick={handleToggleCliente}
+              className={`mt-14 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow-sm border ${
+                clienteActivo
+                  ? 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
+                  : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+              }`}
+            >
+              {clienteActivo ? <><UserX size={16} /> Desactivar cliente</> : <><UserCheck size={16} /> Reactivar cliente</>}
+            </button>
           </div>
-          <h2 className="text-2xl font-bold text-slate-800">{cliente.nombre}</h2>
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+            {cliente.nombre}
+            {!clienteActivo && (
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">Inactivo</span>
+            )}
+          </h2>
           <div className="flex flex-wrap gap-4 mt-3">
             {cliente.empresa && (
               <span className="flex items-center gap-1.5 text-slate-500 text-sm">
@@ -164,9 +218,9 @@ export default function ClienteDetalle() {
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Carteras activas', value: carterasCliente.length },
+          { label: 'Carteras activas', value: carterasActivasCount },
           { label: 'Valor mensual total', value: formatCOP(totalCartera) },
-          { label: 'En mora', value: carterasCliente.filter(c => c.estado === 'Mora').length },
+          { label: 'En mora', value: carterasCliente.filter(c => esCarteraActiva(c) && c.estado === 'Mora').length },
         ].map(({ label, value }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-100 p-4 text-center">
             <p className="text-2xl font-bold text-slate-800">{value}</p>
@@ -185,7 +239,8 @@ export default function ClienteDetalle() {
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition"
+            disabled={!clienteActivo}
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={14} /> Asignar Cartera
           </button>
@@ -217,9 +272,12 @@ export default function ClienteDetalle() {
                 {carterasCliente.map((cartera) => {
                   const dias = diasParaVencer(cartera.fechaVencimientoMensual);
                   return (
-                    <tr key={cartera.id} className="hover:bg-slate-50 transition">
+                    <tr key={cartera.id} className={`hover:bg-slate-50 transition ${!esCarteraActiva(cartera) ? 'opacity-55' : ''}`}>
                       <td className="font-bold text-slate-800">
                         {cartera.nombre || 'Sin nombre'}
+                        {!esCarteraActiva(cartera) && (
+                          <span className="ml-1.5 text-[10px] font-bold text-slate-400 uppercase">Inactiva</span>
+                        )}
                       </td>
                       <td className="font-semibold text-slate-700">{formatCOP(cartera.valorCartera)}</td>
                       <td className="text-slate-500">{formatCOP(cartera.costoTotal)}</td>
@@ -264,39 +322,39 @@ export default function ClienteDetalle() {
                         <div className="flex items-center gap-1">
                           {(() => {
                             const cobro = cobros.find(c => c.carteraId === cartera.id);
-                            if (!cobro) return null;
-                            const isPagado = cobro.estado === 'Pagado';
-                            const isLoading = loadingId === cobro.id;
+                            const carteraActiva = esCarteraActiva(cartera);
 
                             return (
                               <>
-                                {/* Pago Normal */}
-                                <button
-                                  onClick={() => handlePago(cobro, isPagado)}
-                                  disabled={isLoading}
-                                  title={isPagado ? 'Revertir pago' : 'Registrar pago'}
-                                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all
-                                    ${isPagado 
-                                      ? 'bg-rose-50 text-rose-500 hover:bg-rose-100 ring-1 ring-rose-200' 
-                                      : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 ring-1 ring-emerald-200'}`}
-                                >
-                                  {isLoading ? <RefreshCw size={12} className="animate-spin" /> : isPagado ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
-                                </button>
-
-                                {/* Cortesia */}
-                                {!isPagado && (
-                                  <button
-                                    onClick={() => handleCortesia(cobro)}
-                                    disabled={isLoading}
-                                    title="Cortesia ($0)"
-                                    className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 ring-1 ring-indigo-200 flex items-center justify-center transition-all"
-                                  >
-                                    <Gift size={14} />
-                                  </button>
-                                )}
-                              </>
-                            );
-                          })()}
+                                {carteraActiva && cobro && (() => {
+                                  const isPagado = cobro.estado === 'Pagado';
+                                  const isLoading = loadingId === cobro.id;
+                                  return (
+                                    <>
+                                      <button
+                                        onClick={() => handlePago(cobro, isPagado)}
+                                        disabled={isLoading}
+                                        title={isPagado ? 'Revertir pago' : 'Registrar pago'}
+                                        className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all
+                                          ${isPagado 
+                                            ? 'bg-rose-50 text-rose-500 hover:bg-rose-100 ring-1 ring-rose-200' 
+                                            : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 ring-1 ring-emerald-200'}`}
+                                      >
+                                        {isLoading ? <RefreshCw size={12} className="animate-spin" /> : isPagado ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+                                      </button>
+                                      {!isPagado && (
+                                        <button
+                                          onClick={() => handleCortesia(cobro)}
+                                          disabled={isLoading}
+                                          title="Cortesia ($0)"
+                                          className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 ring-1 ring-indigo-200 flex items-center justify-center transition-all"
+                                        >
+                                          <Gift size={14} />
+                                        </button>
+                                      )}
+                                    </>
+                                  );
+                                })()}
 
                           <button
                             onClick={() => openEditCartera(cartera)}
@@ -305,6 +363,21 @@ export default function ClienteDetalle() {
                           >
                             <Pencil size={12} />
                           </button>
+
+                          <button
+                            onClick={() => handleToggleCartera(cartera)}
+                            title={carteraActiva ? 'Desactivar cartera' : 'Reactivar cartera'}
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ring-1 ${
+                              carteraActiva
+                                ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 ring-amber-200'
+                                : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 ring-emerald-200'
+                            }`}
+                          >
+                            {carteraActiva ? <PowerOff size={12} /> : <Power size={12} />}
+                          </button>
+                              </>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -351,26 +424,31 @@ export default function ClienteDetalle() {
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {historial.map((pago) => (
-                  <tr key={pago.id} className="hover:bg-slate-50 transition">
+                  <tr key={pago.id} className={`hover:bg-slate-50 transition ${clasesFilaAdelanto(pago)}`}>
                     <td className="text-slate-700">
                       <div className="font-medium">{pago.fechaPago ? formatDate(pago.fechaPago) : '—'}</div>
                       <div className="text-[10px] text-slate-400 font-mono">#{pago.id.slice(-6)}</div>
                     </td>
                     <td className="text-slate-600 font-medium">
-                      {pago.carteraNombre}
+                      <div>{pago.carteraNombre}</div>
+                      {pago.esPagoAdelantado && (
+                        <span className="mt-0.5 inline-block">
+                          <BadgePagoAnticipado mesRecibido={etiquetaMesRecibido(pago)} />
+                        </span>
+                      )}
                     </td>
                     <td className="text-slate-500">
                       {MESES[pago.mes - 1]} {pago.anio}
                     </td>
                     <td className="text-right">
-                      <div className="font-bold text-emerald-600">
-                        {formatCOP(pago.valorCobro + (pago.montoAdelantado || 0))}
-                      </div>
-                      {(pago.montoAdelantado || 0) > 0 && (
-                        <span className="text-[10px] text-indigo-500 font-semibold bg-indigo-50 px-1 rounded">
-                          Incluye adelanto
-                        </span>
-                      )}
+                      <ValorConAdelanto
+                        valorCobro={pago.valorCobro}
+                        montoAdelantado={pago.montoAdelantado}
+                        esCortesia={pago.esCortesia}
+                        esPagoAnticipadoFlag={pago.esPagoAdelantado}
+                        mesRecibido={etiquetaMesRecibido(pago)}
+                        alineacion="der"
+                      />
                     </td>
                   </tr>
                 ))}

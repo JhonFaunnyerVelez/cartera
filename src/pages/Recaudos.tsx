@@ -9,6 +9,13 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { CobroMensual } from '../types';
+import {
+  BadgePagoAnticipado,
+  BadgeRecibioAdelanto,
+  ValorConAdelanto,
+  clasesFilaAdelanto,
+  etiquetaMesRecibido,
+} from '../components/carteras/AdelantoIndicators';
 import { 
   Search, 
   Filter, 
@@ -160,7 +167,7 @@ export default function Recaudos() {
                 filtered.map((r) => {
                   const isAdelanto = (r.montoAdelantado || 0) > 0;
                   return (
-                    <tr key={r.id} className="hover:bg-slate-50 transition group">
+                    <tr key={r.id} className={`hover:bg-slate-50 transition group ${clasesFilaAdelanto(r)}`}>
                       <td>
                         <div className="flex flex-col">
                           <span className="font-semibold text-slate-700">{formatDate(r.fechaPago)}</span>
@@ -175,6 +182,9 @@ export default function Recaudos() {
                           <div className="flex flex-col min-w-0">
                             <span className="font-bold text-slate-800 truncate">{r.clienteNombre}</span>
                             <span className="text-[11px] text-slate-500 truncate">{r.carteraNombre}</span>
+                            {r.esPagoAdelantado && (
+                              <span className="mt-0.5"><BadgePagoAnticipado mesRecibido={etiquetaMesRecibido(r)} /></span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -185,25 +195,20 @@ export default function Recaudos() {
                         </div>
                       </td>
                       <td className="text-right">
-                        <div className="flex flex-col items-end">
-                          <span className={`font-bold ${r.esCortesia ? 'text-slate-400 line-through' : 'text-emerald-600'}`}>
-                            {formatCOP(r.valorCobro + (r.montoAdelantado || 0))}
-                          </span>
-                          {r.esCortesia && (
-                            <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-tighter">Cortesía</span>
-                          )}
-                          {isAdelanto && (
-                            <span className="text-[10px] font-medium text-indigo-500 bg-indigo-50 px-1 rounded">
-                              Incluye adelanto
-                            </span>
-                          )}
-                        </div>
+                        <ValorConAdelanto
+                          valorCobro={r.valorCobro}
+                          montoAdelantado={r.montoAdelantado}
+                          esCortesia={r.esCortesia}
+                          esPagoAnticipadoFlag={r.esPagoAdelantado}
+                          mesRecibido={etiquetaMesRecibido(r)}
+                          alineacion="der"
+                        />
                       </td>
                       <td>
                         {r.esPagoAdelantado ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">
-                            ⏩ Adelantado
-                          </span>
+                          <BadgePagoAnticipado mesRecibido={etiquetaMesRecibido(r)} />
+                        ) : isAdelanto ? (
+                          <BadgeRecibioAdelanto />
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
                             <CheckCircle2 size={10} /> Mensual
