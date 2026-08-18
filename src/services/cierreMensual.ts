@@ -53,7 +53,7 @@ export function formatCierreId(mes: number, anio: number): string {
  * Calcula la fecha de vencimiento para el mes y año específicos,
  * manteniendo el día y hora de la fecha base.
  */
-function calcularFechaVencimientoCobro(fechaBase: Timestamp | undefined, mes: number, anio: number): Timestamp | undefined {
+export function calcularFechaVencimientoCobro(fechaBase: Timestamp | undefined, mes: number, anio: number): Timestamp | undefined {
   if (!fechaBase) return fechaBase;
   const dateBase = fechaBase.toDate();
   const nuevaFecha = new Date(anio, mes - 1, dateBase.getDate(), dateBase.getHours(), dateBase.getMinutes(), dateBase.getSeconds());

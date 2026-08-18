@@ -57,10 +57,15 @@ export function useCobros(mes: number, anio: number) {
     });
   }, [mes, anio]);
 
-  const registrarPago = async (cobroId: string) => {
-    await updateDoc(doc(db, 'cobros_mensuales', cobroId), {
+  const registrarPago = async (cobro: CobroMensual) => {
+    await updateDoc(doc(db, 'cobros_mensuales', cobro.id), {
       estado: 'Pagado',
       fechaPago: Timestamp.now(),
+      valorCobro: cobro.valorCobro,
+      carteraNombre: cobro.carteraNombre ?? '',
+      clienteNombre: cobro.clienteNombre ?? '',
+      ...(cobro.fechaVencimiento ? { fechaVencimiento: cobro.fechaVencimiento } : {}),
+      esCortesia: false,
     });
   };
 
@@ -100,10 +105,14 @@ export function useCobros(mes: number, anio: number) {
     await batch.commit();
   };
 
-  const registrarCortesia = async (cobroId: string) => {
-    await updateDoc(doc(db, 'cobros_mensuales', cobroId), {
+  const registrarCortesia = async (cobro: CobroMensual) => {
+    await updateDoc(doc(db, 'cobros_mensuales', cobro.id), {
       estado: 'Pagado',
       fechaPago: Timestamp.now(),
+      valorCobro: cobro.valorCobro,
+      carteraNombre: cobro.carteraNombre ?? '',
+      clienteNombre: cobro.clienteNombre ?? '',
+      ...(cobro.fechaVencimiento ? { fechaVencimiento: cobro.fechaVencimiento } : {}),
       esCortesia: true,
     });
   };

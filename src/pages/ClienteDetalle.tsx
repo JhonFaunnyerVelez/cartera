@@ -19,6 +19,11 @@ import {
   clasesFilaAdelanto,
   etiquetaMesRecibido,
 } from '../components/carteras/AdelantoIndicators';
+import {
+  alinearCobroConCartera,
+  esCobroVirtual,
+  materializarCobroVirtual,
+} from '../utils/cobrosVirtuales';
 
 function formatCOP(v: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
@@ -26,6 +31,10 @@ function formatCOP(v: number) {
 function formatDate(ts: any) {
   if (!ts) return '—';
   return ts.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function diaPagoMensual(ts: any): string {
+  if (!ts?.toDate) return '—';
+  return `Día ${ts.toDate().getDate()}`;
 }
 
 export default function ClienteDetalle() {
@@ -81,34 +90,54 @@ export default function ClienteDetalle() {
   const openEditCartera = (c: Cartera) => { setEditingCartera(c); setIsModalOpen(true); };
   const closeModal = () => { setIsModalOpen(false); setEditingCartera(null); };
 
-  const handlePago = async (cobro: CobroMensual, isPagado: boolean) => {
-    const actionStr = isPagado ? 'revertir' : 'registrar';
-    
+  const handlePago = async (cobro: CobroMensual, cartera: Cartera, isPagado: boolean) => {
+    const mesActual = hoy.getMonth() + 1;
+    const anioActual = hoy.getFullYear();
+    const cobroAlineado = alinearCobroConCartera(cobro, cartera, mesActual, anioActual);
+
     setConfirmConfig({
       isOpen: true,
       title: isPagado ? '¿Revertir pago?' : '¿Registrar pago?',
-      message: `¿Estás seguro de que quieres ${actionStr} el pago de ${cobro.carteraNombre}?`,
+      message: isPagado
+        ? `¿Estás seguro de que quieres revertir el pago de ${cobroAlineado.carteraNombre}?`
+        : `¿Registrar pago de ${formatCOP(cobroAlineado.valorCobro)} por ${cobroAlineado.carteraNombre}?`,
       type: isPagado ? 'danger' : 'success',
       onConfirm: async () => {
         setLoadingId(cobro.id);
         try {
           if (isPagado) await revertirPago(cobro);
-          else await registrarPago(cobro.id);
+          else {
+            let cobroPago = cobroAlineado;
+            if (esCobroVirtual(cobro.id)) {
+              const id = await materializarCobroVirtual(cobroAlineado);
+              cobroPago = { ...cobroAlineado, id };
+            }
+            await registrarPago(cobroPago);
+          }
         } finally { setLoadingId(null); }
       }
     });
   };
 
-  const handleCortesia = async (cobro: CobroMensual) => {
+  const handleCortesia = async (cobro: CobroMensual, cartera: Cartera) => {
+    const mesActual = hoy.getMonth() + 1;
+    const anioActual = hoy.getFullYear();
+    const cobroAlineado = alinearCobroConCartera(cobro, cartera, mesActual, anioActual);
+
     setConfirmConfig({
       isOpen: true,
       title: 'Registrar Cortesía',
-      message: `¿Quieres marcar el cobro de ${cobro.carteraNombre} como CORTESÍA ($0)?`,
+      message: `¿Quieres marcar el cobro de ${cobroAlineado.carteraNombre} como CORTESÍA ($0)?`,
       type: 'info',
       onConfirm: async () => {
         setLoadingId(cobro.id);
         try {
-          await registrarCortesia(cobro.id);
+          let cobroPago = cobroAlineado;
+          if (esCobroVirtual(cobro.id)) {
+            const id = await materializarCobroVirtual(cobroAlineado);
+            cobroPago = { ...cobroAlineado, id };
+          }
+          await registrarCortesia(cobroPago);
         } finally { setLoadingId(null); }
       }
     });
@@ -261,9 +290,7 @@ export default function ClienteDetalle() {
                 <tr className="bg-slate-50 border-b border-slate-100 text-left">
                   <th className="text-slate-500">Cartera</th>
                   <th className="text-slate-500">Valor mensual</th>
-                  <th className="text-slate-500">Costo total</th>
-                  <th className="text-slate-500">Vencimiento</th>
-                  <th className="text-slate-500">Renovación</th>
+                  <th className="text-slate-500">Día de pago</th>
                   <th className="text-slate-500">Estado</th>
                   <th className="text-slate-500">Acciones</th>
                 </tr>
@@ -280,11 +307,7 @@ export default function ClienteDetalle() {
                         )}
                       </td>
                       <td className="font-semibold text-slate-700">{formatCOP(cartera.valorCartera)}</td>
-                      <td className="text-slate-500">{formatCOP(cartera.costoTotal)}</td>
-                      <td>
-                        <p className="text-slate-700">{formatDate(cartera.fechaVencimientoMensual)}</p>
-                      </td>
-                      <td className="text-slate-500">{formatDate(cartera.fechaRenovacion)}</td>
+                      <td className="text-slate-600">{diaPagoMensual(cartera.fechaVencimientoMensual)}</td>
                       <td>
                         {(() => {
                           const cobroMes = cobros.find(c => c.carteraId === cartera.id);
@@ -332,7 +355,7 @@ export default function ClienteDetalle() {
                                   return (
                                     <>
                                       <button
-                                        onClick={() => handlePago(cobro, isPagado)}
+                                        onClick={() => handlePago(cobro, cartera, isPagado)}
                                         disabled={isLoading}
                                         title={isPagado ? 'Revertir pago' : 'Registrar pago'}
                                         className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all
@@ -344,7 +367,7 @@ export default function ClienteDetalle() {
                                       </button>
                                       {!isPagado && (
                                         <button
-                                          onClick={() => handleCortesia(cobro)}
+                                          onClick={() => handleCortesia(cobro, cartera)}
                                           disabled={isLoading}
                                           title="Cortesia ($0)"
                                           className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 ring-1 ring-indigo-200 flex items-center justify-center transition-all"

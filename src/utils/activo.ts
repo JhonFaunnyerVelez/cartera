@@ -31,9 +31,9 @@ export function periodoEsActualOFuturo(mes: number, anio: number): boolean {
 export function cobroVisibleEnMes(
   cobro: CobroMensual,
   cartera: Cartera | undefined,
-  mesCerrado: boolean
+  esMesPasado: boolean
 ): boolean {
-  if (mesCerrado) return true;
+  if (esMesPasado) return true;
   if (cobro.estado === 'Pagado' || cobro.estado === 'Mora') return true;
   if (cartera && !esCarteraActiva(cartera) && periodoEsActualOFuturo(cobro.mes, cobro.anio)) {
     return false;

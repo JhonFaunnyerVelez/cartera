@@ -8,7 +8,6 @@ const titles: Record<string, string> = {
   '/clientes': 'Gestión de Clientes',
   '/carteras': 'Cobros del Mes',
   '/recaudos': 'Recaudos',
-  '/cierres': 'Cierres Mensuales',
 };
 
 export default function Topbar() {

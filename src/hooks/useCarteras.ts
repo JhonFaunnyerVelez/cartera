@@ -5,17 +5,17 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  addDoc,
   serverTimestamp,
   query,
   orderBy,
   Timestamp,
-  writeBatch,
-  getDocs,
-  where,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Cartera, EstadoCartera } from '../types';
 import { setCarteraActiva as setCarteraActivaService } from '../services/activacion';
+import { sincronizarCobrosPendientesCartera } from '../utils/cobrosVirtuales';
 
 export function calcularEstado(fechaVencimientoMensual: Timestamp): EstadoCartera {
   const hoy = new Date();
@@ -72,66 +72,18 @@ export function useCarteras() {
   }, []);
 
   /**
-   * Calcula la fecha de vencimiento para el mes y año específicos,
-   * manteniendo el día y hora de la fecha base.
-   */
-  const calcularFechaVencimientoCobro = (fechaBase: Timestamp | undefined, mes: number, anio: number): Timestamp | undefined => {
-    if (!fechaBase) return fechaBase;
-    const dateBase = fechaBase.toDate();
-    const nuevaFecha = new Date(anio, mes - 1, dateBase.getDate(), dateBase.getHours(), dateBase.getMinutes(), dateBase.getSeconds());
-    return Timestamp.fromDate(nuevaFecha);
-  };
-
-  /**
-   * Crea la cartera Y genera automáticamente su cobro para el mes actual.
-   * Así aunque se registre a mitad de mes, ya aparece en la lista de cobros.
+   * Crea la cartera. Los cobros del mes actual y futuros se proyectan en pantalla
+   * desde la configuración de la cartera (sin documento en Firestore hasta registrar pago).
    */
   const addCartera = async (data: Omit<Cartera, 'id' | 'fechaCreacion' | 'estado'>) => {
     const estado = calcularEstado(data.fechaVencimientoMensual);
-    const hoy = new Date();
-    const mesActual = hoy.getMonth() + 1; // 1-12
-    const anioActual = hoy.getFullYear();
 
-    const batch = writeBatch(db);
-
-    // 1. Crear la cartera
-    const carteraRef = doc(collection(db, 'carteras'));
-    batch.set(carteraRef, {
+    await addDoc(collection(db, 'carteras'), {
       ...data,
       estado,
       activa: true,
       fechaCreacion: serverTimestamp(),
     });
-
-    // 2. Verificar si ya existe un cobro para esta cartera en el mes actual
-    //    (no debería existir porque la cartera es nueva, pero lo chequeamos por seguridad)
-    const existSnap = await getDocs(
-      query(
-        collection(db, 'cobros_mensuales'),
-        where('carteraId', '==', carteraRef.id),
-        where('mes', '==', mesActual),
-        where('anio', '==', anioActual)
-      )
-    );
-
-    if (existSnap.empty) {
-      // 3. Generar el cobro del mes actual para esta nueva cartera
-      const cobroRef = doc(collection(db, 'cobros_mensuales'));
-      batch.set(cobroRef, {
-        carteraId: carteraRef.id,
-        carteraNombre: data.nombre || '',
-        clienteId: data.clienteId,
-        clienteNombre: data.clienteNombre || '',
-        mes: mesActual,
-        anio: anioActual,
-        valorCobro: data.valorCartera,
-        estado: 'Pendiente',
-        fechaPago: null,
-        fechaVencimiento: calcularFechaVencimientoCobro(data.fechaVencimientoMensual, mesActual, anioActual),
-      });
-    }
-
-    await batch.commit();
   };
 
   const updateCartera = async (id: string, data: Partial<Omit<Cartera, 'id'>>) => {
@@ -141,24 +93,18 @@ export function useCarteras() {
     }
     await updateDoc(doc(db, 'carteras', id), payload);
 
-    // Si cambió el nombre, actualizar también en los cobros pendientes del mes actual
-    if (data.nombre) {
-      const hoy = new Date();
-      const mesActual = hoy.getMonth() + 1;
-      const anioActual = hoy.getFullYear();
-      const cobrosSnap = await getDocs(
-        query(
-          collection(db, 'cobros_mensuales'),
-          where('carteraId', '==', id),
-          where('mes', '==', mesActual),
-          where('anio', '==', anioActual)
-        )
-      );
-      const b = writeBatch(db);
-      cobrosSnap.docs.forEach((d) => {
-        b.update(d.ref, { carteraNombre: data.nombre });
-      });
-      if (!cobrosSnap.empty) await b.commit();
+    const syncCampos =
+      data.nombre != null ||
+      data.valorCartera != null ||
+      data.fechaVencimientoMensual != null ||
+      data.clienteNombre != null;
+
+    if (syncCampos) {
+      const carteraSnap = await getDoc(doc(db, 'carteras', id));
+      if (carteraSnap.exists()) {
+        const cartera = { id: carteraSnap.id, ...carteraSnap.data() } as Cartera;
+        await sincronizarCobrosPendientesCartera(cartera);
+      }
     }
   };
 

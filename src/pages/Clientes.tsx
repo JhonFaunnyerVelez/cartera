@@ -46,6 +46,7 @@ export default function Clientes() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('nombre');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [tab, setTab] = useState<'activos' | 'inactivos'>('activos');
 
   // Estado para el modal de confirmación bonito
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -64,6 +65,17 @@ export default function Clientes() {
   const carterasPorCliente = useMemo(() => {
     const map: Record<string, { count: number; total: number; nombres: string[] }> = {};
     for (const c of carteras) {
+      if (!map[c.clienteId]) map[c.clienteId] = { count: 0, total: 0, nombres: [] };
+      map[c.clienteId].count++;
+      map[c.clienteId].total += c.valorCartera;
+      if (c.nombre) map[c.clienteId].nombres.push(c.nombre);
+    }
+    return map;
+  }, [carteras]);
+
+  const carterasPorClienteActivas = useMemo(() => {
+    const map: Record<string, { count: number; total: number; nombres: string[] }> = {};
+    for (const c of carteras) {
       if (!esCarteraActiva(c)) continue;
       if (!map[c.clienteId]) map[c.clienteId] = { count: 0, total: 0, nombres: [] };
       map[c.clienteId].count++;
@@ -73,6 +85,9 @@ export default function Clientes() {
     return map;
   }, [carteras]);
 
+  const clientesActivos = useMemo(() => clientes.filter(esClienteActivo), [clientes]);
+  const clientesInactivos = useMemo(() => clientes.filter(c => !esClienteActivo(c)), [clientes]);
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('asc'); }
@@ -80,22 +95,24 @@ export default function Clientes() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return clientes
+    const base = tab === 'activos' ? clientesActivos : clientesInactivos;
+    const carterasMap = tab === 'activos' ? carterasPorClienteActivas : carterasPorCliente;
+    return base
       .filter(c => [c.nombre, c.empresa, c.pais, c.ruta, c.whatsapp ?? ''].join(' ').toLowerCase().includes(q))
       .sort((a, b) => {
         let valA: string | number = '';
         let valB: string | number = '';
         if (sortKey === 'nombre')   { valA = a.nombre; valB = b.nombre; }
         if (sortKey === 'empresa')  { valA = a.empresa || ''; valB = b.empresa || ''; }
-        if (sortKey === 'carteras') { valA = carterasPorCliente[a.id]?.count ?? 0; valB = carterasPorCliente[b.id]?.count ?? 0; }
-        if (sortKey === 'valor')    { valA = carterasPorCliente[a.id]?.total ?? 0; valB = carterasPorCliente[b.id]?.total ?? 0; }
+        if (sortKey === 'carteras') { valA = carterasMap[a.id]?.count ?? 0; valB = carterasMap[b.id]?.count ?? 0; }
+        if (sortKey === 'valor')    { valA = carterasMap[a.id]?.total ?? 0; valB = carterasMap[b.id]?.total ?? 0; }
         if (typeof valA === 'string') {
           const cmp = valA.localeCompare(valB as string, 'es');
           return sortDir === 'asc' ? cmp : -cmp;
         }
         return sortDir === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
       });
-  }, [clientes, search, sortKey, sortDir, carterasPorCliente]);
+  }, [clientesActivos, clientesInactivos, tab, search, sortKey, sortDir, carterasPorCliente, carterasPorClienteActivas]);
 
   const openNewModal  = () => { setEditingCliente(null); setIsModalOpen(true); };
   const openEditModal = (c: Cliente) => { setEditingCliente(c); setIsModalOpen(true); };
@@ -152,7 +169,8 @@ export default function Clientes() {
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Clientes</h2>
           <p className="text-slate-500 text-sm mt-1">
-            {clientes.length} cliente{clientes.length !== 1 ? 's' : ''} ·{' '}
+            {clientesActivos.length} activo{clientesActivos.length !== 1 ? 's' : ''} ·{' '}
+            {clientesInactivos.length} inactivo{clientesInactivos.length !== 1 ? 's' : ''} ·{' '}
             {carterasActivasCount} cartera{carterasActivasCount !== 1 ? 's' : ''} activa{carterasActivasCount !== 1 ? 's' : ''} ·{' '}
             <span className="font-semibold text-indigo-600">{formatCOP(totalValor)}/mes</span>
           </p>
@@ -163,21 +181,62 @@ export default function Clientes() {
         </button>
       </div>
 
-      {/* Buscador */}
-      <div className="relative">
-        <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por nombre, empresa, país, ruta o WhatsApp..."
-          className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition" />
+      {/* Tabs + buscador */}
+      <div className="space-y-3">
+        <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 w-full sm:w-auto overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setTab('activos')}
+            className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
+              tab === 'activos'
+                ? 'bg-white text-indigo-700 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <UserCheck size={15} /> Activos
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              tab === 'activos' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600'
+            }`}>
+              {clientesActivos.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('inactivos')}
+            className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
+              tab === 'inactivos'
+                ? 'bg-white text-slate-700 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <UserX size={15} /> Inactivos
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              tab === 'inactivos' ? 'bg-slate-200 text-slate-700' : 'bg-slate-200 text-slate-600'
+            }`}>
+              {clientesInactivos.length}
+            </span>
+          </button>
+        </div>
+
+        <div className="relative">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nombre, empresa, país, ruta o WhatsApp..."
+            className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition" />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-100 py-16 text-center">
           <Users size={40} className="mx-auto text-slate-300 mb-3" />
           <p className="text-slate-500 font-medium">
-            {search ? 'No se encontraron resultados' : 'Aún no hay clientes registrados'}
+            {search
+              ? 'No se encontraron resultados'
+              : tab === 'activos'
+              ? 'No hay clientes activos'
+              : 'No hay clientes inactivos'}
           </p>
-          {!search && (
+          {!search && tab === 'activos' && (
             <button onClick={openNewModal} className="mt-4 text-indigo-600 text-sm font-medium hover:underline">
               Agregar el primer cliente →
             </button>
@@ -198,10 +257,11 @@ export default function Clientes() {
               </thead>
               <tbody>
                 {filtered.map((cliente, idx) => {
-                  const info = carterasPorCliente[cliente.id] ?? { count: 0, total: 0, nombres: [] };
+                  const infoMap = tab === 'activos' ? carterasPorClienteActivas : carterasPorCliente;
+                  const info = infoMap[cliente.id] ?? { count: 0, total: 0, nombres: [] };
                   return (
                     <tr key={cliente.id}
-                      className={`border-b border-slate-100 transition group hover:bg-indigo-50/40 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${!esClienteActivo(cliente) ? 'opacity-60' : ''}`}>
+                      className={`border-b border-slate-100 transition group hover:bg-indigo-50/40 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${tab === 'inactivos' ? 'opacity-80' : ''}`}>
 
                       {/* Nombre */}
                       <td>
@@ -212,9 +272,6 @@ export default function Clientes() {
                           <div>
                             <p className="font-semibold text-slate-800 text-sm group-hover/name:text-indigo-600 transition leading-tight">
                               {cliente.nombre}
-                              {!esClienteActivo(cliente) && (
-                                <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">Inactivo</span>
-                              )}
                             </p>
                             <span className="text-slate-400 text-xs flex items-center gap-0.5 mt-0.5">
                               Ver detalle <ChevronRight size={11} className="opacity-0 group-hover/name:opacity-100 transition" />

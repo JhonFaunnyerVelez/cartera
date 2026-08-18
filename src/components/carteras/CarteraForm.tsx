@@ -11,13 +11,15 @@ interface CarteraFormProps {
   defaultClienteId?: string;
 }
 
-function toDateInputValue(ts?: Timestamp): string {
-  if (!ts) return '';
-  return ts.toDate().toISOString().split('T')[0];
+function diaFromTimestamp(ts?: Timestamp): number {
+  if (!ts?.toDate) return 1;
+  return ts.toDate().getDate();
 }
 
-function toTimestamp(dateStr: string): Timestamp {
-  return Timestamp.fromDate(new Date(dateStr + 'T00:00:00'));
+function timestampFromDia(dia: number): Timestamp {
+  const hoy = new Date();
+  const diaValido = Math.min(31, Math.max(1, dia));
+  return Timestamp.fromDate(new Date(hoy.getFullYear(), hoy.getMonth(), diaValido, 12, 0, 0));
 }
 
 export default function CarteraForm({ onClose, clientes, initial, defaultClienteId }: CarteraFormProps) {
@@ -25,7 +27,6 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Ordenar clientes alfabéticamente para el desplegable
   const clientesOrdenados = [...clientes]
     .filter(c => esClienteActivo(c) || c.id === initial?.clienteId || c.id === defaultClienteId)
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
@@ -34,9 +35,7 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
     nombre: initial?.nombre || '',
     clienteId: initial?.clienteId || defaultClienteId || (clientesOrdenados[0]?.id || ''),
     valorCartera: initial?.valorCartera?.toString() || '',
-    costoTotal: initial?.costoTotal?.toString() || '',
-    fechaVencimientoMensual: toDateInputValue(initial?.fechaVencimientoMensual),
-    fechaRenovacion: toDateInputValue(initial?.fechaRenovacion),
+    diaPago: String(diaFromTimestamp(initial?.fechaVencimientoMensual)),
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -48,23 +47,27 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
     if (!form.nombre.trim()) { setError('El nombre de la cartera es requerido.'); return; }
     if (!form.clienteId) { setError('Selecciona un cliente.'); return; }
     if (!form.valorCartera || isNaN(Number(form.valorCartera))) { setError('Ingresa un valor mensual válido.'); return; }
-    if (!form.fechaVencimientoMensual) { setError('Selecciona la fecha de vencimiento.'); return; }
+
+    const dia = Number(form.diaPago);
+    if (!form.diaPago || isNaN(dia) || dia < 1 || dia > 31) {
+      setError('El día de pago debe estar entre 1 y 31.');
+      return;
+    }
 
     setLoading(true);
     setError('');
 
     try {
       const cliente = clientes.find((c) => c.id === form.clienteId);
+      const fechaVencimientoMensual = timestampFromDia(dia);
       const payload = {
         nombre: form.nombre.trim(),
         clienteId: form.clienteId,
         clienteNombre: cliente?.nombre || '',
         valorCartera: Number(form.valorCartera),
-        costoTotal: Number(form.costoTotal || 0),
-        fechaVencimientoMensual: toTimestamp(form.fechaVencimientoMensual),
-        fechaRenovacion: form.fechaRenovacion
-          ? toTimestamp(form.fechaRenovacion)
-          : Timestamp.fromDate(new Date()),
+        costoTotal: 0,
+        fechaVencimientoMensual,
+        fechaRenovacion: fechaVencimientoMensual,
       };
 
       if (initial) {
@@ -89,17 +92,15 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
         <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>
       )}
 
-      {/* Nombre de la cartera */}
       <div>
         <label className={labelCls}>Nombre de la cartera *</label>
         <input
           name="nombre" value={form.nombre} onChange={handleChange} required
-          placeholder="Ej: Plan Premium, Suscripción Anual..."
+          placeholder="Ej: Plan Premium, Suscripción mensual..."
           className={inputCls}
         />
       </div>
 
-      {/* Cliente Selector */}
       <div>
         <label className={labelCls}>Cliente *</label>
         <select name="clienteId" value={form.clienteId} onChange={handleChange} className={inputCls}>
@@ -112,36 +113,24 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
         </select>
       </div>
 
-      {/* Valores */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className={labelCls}>Valor mensual (COP) *</label>
           <input type="number" name="valorCartera" value={form.valorCartera} onChange={handleChange}
-            placeholder="0" min="0" className={inputCls} />
+            placeholder="50000" min="0" className={inputCls} />
         </div>
-        <div>
-          <label className={labelCls}>Costo total (COP)</label>
-          <input type="number" name="costoTotal" value={form.costoTotal} onChange={handleChange}
-            placeholder="0" min="0" className={inputCls} />
-        </div>
-      </div>
-
-      {/* Fechas */}
-      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={labelCls}>Día de pago mensual *</label>
-          <input type="date" name="fechaVencimientoMensual"
-            value={form.fechaVencimientoMensual} onChange={handleChange} className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>Fecha de renovación</label>
-          <input type="date" name="fechaRenovacion"
-            value={form.fechaRenovacion} onChange={handleChange} className={inputCls} />
+          <select name="diaPago" value={form.diaPago} onChange={handleChange} className={inputCls}>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+              <option key={d} value={d}>Día {d} de cada mes</option>
+            ))}
+          </select>
         </div>
       </div>
 
       <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-xs text-indigo-700">
-        💡 El estado se calcula automáticamente. Al asignar la cartera se generará un cobro para el mes actual.
+        El cobro se proyecta automáticamente cada mes según el valor y el día de pago.
       </div>
 
       <div className="flex gap-3 pt-2">

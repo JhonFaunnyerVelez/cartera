@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Briefcase, LogOut, ChevronRight,
-  CalendarClock, TrendingUp, PanelLeftClose, PanelLeftOpen, X,
+  TrendingUp, PanelLeftClose, PanelLeftOpen, X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLayout } from '../../context/LayoutContext';
@@ -11,7 +11,6 @@ const navItems = [
   { to: '/clientes', label: 'Clientes', icon: Users },
   { to: '/carteras', label: 'Carteras', icon: Briefcase },
   { to: '/recaudos', label: 'Recaudos', icon: TrendingUp },
-  { to: '/cierres', label: 'Cierres Mensuales', icon: CalendarClock },
 ];
 
 interface SidebarProps {

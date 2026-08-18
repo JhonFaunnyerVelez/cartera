@@ -1,17 +1,17 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { DollarSign, AlertCircle, Users, Clock, ArrowRight } from 'lucide-react';
+import { AlertCircle, Users, Clock, ArrowRight } from 'lucide-react';
 import { useClientes } from '../hooks/useClientes';
 import { useCarteras, diasParaVencer } from '../hooks/useCarteras';
 import StatCard from '../components/ui/StatCard';
 import Badge from '../components/ui/Badge';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import ResumenAnualPanel from '../components/dashboard/ResumenAnualPanel';
 import { esCarteraActiva } from '../utils/activo';
 
 function formatCOP(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value);
 }
-
 
 function formatDateCurrentMonth(ts: any): string {
   if (!ts) return '-';
@@ -27,27 +27,8 @@ export default function Dashboard() {
   const { carteras, loading: loadingCarteras } = useCarteras();
 
   const carterasActivas = useMemo(() => carteras.filter(esCarteraActiva), [carteras]);
-
-  // ── KPI 1: Deudas pendientes (suma de valorCartera de carteras en Mora) ──
-  const deudasPendientes = useMemo(() =>
-    carterasActivas
-      .filter((c) => c.estado === 'Mora')
-      .reduce((sum, c) => sum + c.valorCartera, 0),
-    [carterasActivas]
-  );
-
-  // ── KPI 2: Acumulado del mes (suma de carteras 'Al día' como ingreso estimado) ──
-  const acumuladoMes = useMemo(() =>
-    carterasActivas
-      .filter((c) => c.estado === 'Al día' || c.estado === 'Próximo a vencer')
-      .reduce((sum, c) => sum + c.valorCartera, 0),
-    [carterasActivas]
-  );
-
-  // ── KPI 3: Total clientes activos ──
   const totalClientes = clientes.filter(c => c.activo !== false).length;
 
-  // ── Tabla: Próximos a vencer (≤ 5 días y no vencidos) ──
   const proximosAVencer = useMemo(() => {
     return carterasActivas
       .filter((c) => {
@@ -59,47 +40,38 @@ export default function Dashboard() {
       );
   }, [carterasActivas]);
 
-  // ── Carteras en mora ──
   const enMora = useMemo(() => carterasActivas.filter((c) => c.estado === 'Mora'), [carterasActivas]);
 
   if (loadingClientes || loadingCarteras) return <LoadingSpinner />;
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-slate-800">Resumen general</h2>
+        <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
         <p className="text-slate-500 text-sm mt-1">
-          Vista consolidada de tu cartera de clientes y suscripciones.
+          Ganancia anual, recaudo por mes y alertas operativas de tu cartera.
         </p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <StatCard
-          title="Acumulado estimado del mes"
-          value={formatCOP(acumuladoMes)}
-          subtitle={`${carterasActivas.filter(c => c.estado !== 'Mora').length} carteras activas`}
-          icon={DollarSign}
-          color="emerald"
-        />
-        <StatCard
-          title="Deudas pendientes"
-          value={formatCOP(deudasPendientes)}
-          subtitle={`${enMora.length} cartera${enMora.length !== 1 ? 's' : ''} en mora`}
-          icon={AlertCircle}
-          color="rose"
-        />
+      <ResumenAnualPanel />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StatCard
           title="Clientes activos"
           value={totalClientes}
-          subtitle={`${carterasActivas.length} cartera${carterasActivas.length !== 1 ? 's' : ''} registradas`}
+          subtitle={`${carterasActivas.length} cartera${carterasActivas.length !== 1 ? 's' : ''} activas`}
           icon={Users}
           color="indigo"
         />
+        <StatCard
+          title="Carteras en mora"
+          value={enMora.length}
+          subtitle={enMora.length > 0 ? formatCOP(enMora.reduce((s, c) => s + c.valorCartera, 0)) + ' pendientes' : 'Sin mora registrada'}
+          icon={AlertCircle}
+          color="rose"
+        />
       </div>
 
-      {/* Próximos a Vencer */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -112,13 +84,13 @@ export default function Dashboard() {
             </div>
           </div>
           <Link to="/carteras" className="text-indigo-600 text-sm font-medium flex items-center gap-1 hover:gap-2 transition-all">
-            Ver todo <ArrowRight size={14} />
+            Ver cobros <ArrowRight size={14} />
           </Link>
         </div>
 
         {proximosAVencer.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-sm">
-            <Clock size={32} className="mx-auto mb-3 opacity-30" />
+          <div className="py-10 text-center text-slate-400 text-sm">
+            <Clock size={28} className="mx-auto mb-2 opacity-30" />
             No hay carteras próximas a vencer
           </div>
         ) : (
@@ -143,12 +115,8 @@ export default function Dashboard() {
                         <p className="font-medium text-slate-800">{cartera.clienteNombre || cliente?.nombre || '-'}</p>
                         <p className="text-slate-400 text-[11px]">{cliente?.empresa || ''}</p>
                       </td>
-                      <td className="text-slate-700 font-medium">
-                        {formatCOP(cartera.valorCartera)}
-                      </td>
-                      <td className="text-slate-500">
-                        {formatDateCurrentMonth(cartera.fechaVencimientoMensual)}
-                      </td>
+                      <td className="text-slate-700 font-medium">{formatCOP(cartera.valorCartera)}</td>
+                      <td className="text-slate-500">{formatDateCurrentMonth(cartera.fechaVencimientoMensual)}</td>
                       <td>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
                           dias === 0 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
@@ -156,9 +124,7 @@ export default function Dashboard() {
                           {dias === 0 ? '¡Hoy!' : `${dias} día${dias !== 1 ? 's' : ''}`}
                         </span>
                       </td>
-                      <td>
-                        <Badge estado={cartera.estado} />
-                      </td>
+                      <td><Badge estado={cartera.estado} /></td>
                     </tr>
                   );
                 })}
@@ -168,7 +134,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Carteras en Mora */}
       {enMora.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-rose-100 overflow-hidden">
           <div className="flex items-center gap-2 px-6 py-4 border-b border-rose-50 bg-rose-50/50">

@@ -7,7 +7,6 @@ import Clientes from './pages/Clientes';
 import ClienteDetalle from './pages/ClienteDetalle';
 import Carteras from './pages/Carteras';
 import Recaudos from './pages/Recaudos';
-import CierresMensuales from './pages/CierresMensuales';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
 // Protege rutas privadas — redirige a /login si no está autenticado
@@ -37,7 +36,6 @@ function AppRoutes() {
         <Route path="/clientes/:id" element={<ClienteDetalle />} />
         <Route path="/carteras" element={<Carteras />} />
         <Route path="/recaudos" element={<Recaudos />} />
-        <Route path="/cierres" element={<CierresMensuales />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  PlusCircle, Search, CheckCircle2, XCircle, Pencil,
+  Search, CheckCircle2, XCircle, Pencil,
   Trash2, RefreshCw, AlertCircle, DollarSign, Clock,
   ChevronUp, ChevronDown, Briefcase, CalendarDays, Gift,
   ChevronLeft, ChevronRight, Power, PowerOff,
@@ -10,7 +10,6 @@ import {
 import { useCobros } from '../hooks/useCobros';
 import { useCarteras } from '../hooks/useCarteras';
 import { useClientes } from '../hooks/useClientes';
-import { useCierres } from '../hooks/useCierres';
 import { generarCobrosParaMes } from '../services/cierreMensual';
 import type { CobroMensual, Cartera, Cliente } from '../types';
 import Modal from '../components/ui/Modal';
@@ -19,6 +18,12 @@ import CarteraForm from '../components/carteras/CarteraForm';
 import PagoAdelantoModal from '../components/carteras/PagoAdelantoModal';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { cobroVisibleEnMes, esCarteraActiva } from '../utils/activo';
+import { esMesPasado } from '../utils/periodo';
+import {
+  combinarCobrosConVirtuales,
+  esCobroVirtual,
+  materializarCobroVirtual,
+} from '../utils/cobrosVirtuales';
 import {
   BadgePagoAnticipado,
   BadgeRecibioAdelanto,
@@ -407,12 +412,10 @@ export default function Carteras() {
   const { cobros, loading: lCobros, registrarPago, registrarCortesia, revertirPago } = useCobros(mesSel, anioSel);
   const { carteras, loading: lCarteras, deleteCartera, setCarteraActiva } = useCarteras();
   const { clientes, loading: lClientes } = useClientes();
-  const { cierres, loading: lCierres } = useCierres();
 
-  // ¿El mes seleccionado ya tiene un cierre ejecutado? → es de solo lectura
-  const mesCerrado = cierres.some(c => c.mes === mesSel && c.anio === anioSel);
-  // Se puede generar si el mes NO está cerrado (sin importar si es pasado, actual o futuro)
-  const puedeGenerar = !mesCerrado;
+  const mesPasado = esMesPasado(mesSel, anioSel);
+  const usaProyeccionDinamica = esMesActual || esMesFuturo;
+  const puedeGenerar = mesPasado;
 
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -445,10 +448,15 @@ export default function Carteras() {
     return map;
   }, [carteras]);
 
+  const cobrosDelMes = useMemo(() => {
+    if (!usaProyeccionDinamica) return cobros;
+    return combinarCobrosConVirtuales(cobros, carteras, mesSel, anioSel);
+  }, [cobros, carteras, mesSel, anioSel, usaProyeccionDinamica]);
+
   // Ordenar por fecha de vencimiento ASCENDENTE (más urgente primero)
   const cobrosOrdenados = useMemo(() => {
-    return [...cobros]
-      .filter(c => cobroVisibleEnMes(c, carterasMap.get(c.carteraId), mesCerrado))
+    return [...cobrosDelMes]
+      .filter(c => cobroVisibleEnMes(c, carterasMap.get(c.carteraId), mesPasado))
       .filter(c => {
         if (!search.trim()) return true;
         return [c.clienteNombre, c.carteraNombre].join(' ').toLowerCase().includes(search.toLowerCase());
@@ -458,7 +466,7 @@ export default function Carteras() {
         const db = b.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
         return da - db;
       });
-  }, [cobros, search, carterasMap, mesCerrado]);
+  }, [cobrosDelMes, search, carterasMap, mesPasado]);
 
   const pendientes = useMemo(() => cobrosOrdenados.filter(c => c.estado !== 'Pagado'), [cobrosOrdenados]);
   const pagados    = useMemo(() => cobrosOrdenados.filter(c => c.estado === 'Pagado'), [cobrosOrdenados]);
@@ -486,18 +494,26 @@ export default function Carteras() {
   const totalGen  = useMemo(() => cobrosOrdenados.reduce((s, c) => s + c.valorCobro, 0), [cobrosOrdenados]);
 
   const handlePago = async (cobro: CobroMensual, isPagado: boolean) => {
-    const actionStr = isPagado ? 'revertir' : 'registrar';
-    
     setConfirmConfig({
       isOpen: true,
       title: isPagado ? '¿Revertir pago?' : '¿Registrar pago?',
-      message: `¿Estás seguro de que quieres ${actionStr} el pago de ${cobro.carteraNombre}?`,
+      message: isPagado
+        ? `¿Estás seguro de que quieres revertir el pago de ${cobro.carteraNombre}?`
+        : `¿Registrar pago de ${formatCOP(cobro.valorCobro)} por ${cobro.carteraNombre}?`,
       type: isPagado ? 'danger' : 'success',
       onConfirm: async () => {
         setLoadingId(cobro.id);
         try {
-          if (isPagado) await revertirPago(cobro);
-          else await registrarPago(cobro.id);
+          if (isPagado) {
+            await revertirPago(cobro);
+          } else {
+            let cobroPago = cobro;
+            if (esCobroVirtual(cobro.id)) {
+              const id = await materializarCobroVirtual(cobro);
+              cobroPago = { ...cobro, id };
+            }
+            await registrarPago(cobroPago);
+          }
         } finally { setLoadingId(null); }
       }
     });
@@ -512,7 +528,12 @@ export default function Carteras() {
       onConfirm: async () => {
         setLoadingId(cobro.id);
         try {
-          await registrarCortesia(cobro.id);
+          let cobroPago = cobro;
+          if (esCobroVirtual(cobro.id)) {
+            const id = await materializarCobroVirtual(cobro);
+            cobroPago = { ...cobro, id };
+          }
+          await registrarCortesia(cobroPago);
         } finally { setLoadingId(null); }
       }
     });
@@ -545,7 +566,7 @@ export default function Carteras() {
       title: activa ? '¿Desactivar cartera?' : '¿Reactivar cartera?',
       message: activa
         ? `"${cartera.nombre}" dejará de aparecer en cobros futuros. El historial de meses anteriores se conserva.`
-        : `"${cartera.nombre}" volverá a generar cobros del mes actual en adelante.`,
+        : `"${cartera.nombre}" volverá a aparecer en los cobros del mes actual y futuros.`,
       type: activa ? 'danger' : 'success',
       onConfirm: async () => {
         await setCarteraActiva(cartera.id, !activa);
@@ -566,7 +587,7 @@ export default function Carteras() {
 
   const closeModal = () => { setModalOpen(false); setEditCartera(null); };
 
-  if (lCobros || lCarteras || lClientes || lCierres) return <LoadingSpinner />;
+  if (lCobros || lCarteras || lClientes) return <LoadingSpinner />;
 
   return (
     <div className="space-y-5">
@@ -578,103 +599,102 @@ export default function Carteras() {
             Ordenados por fecha · los primeros son los más urgentes
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap justify-end items-center">
-          {/* Generar cobros: visible en cualquier mes SIN cierre ejecutado */}
+        <div className="flex flex-col sm:flex-row gap-2 flex-wrap justify-end items-center">
           {puedeGenerar && (
             <button onClick={handleGenerar} disabled={generando}
               className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-60 shadow-sm"
-              title={mesCerrado ? 'Este mes ya fue cerrado' : 'Genera cobros para carteras que aún no tengan uno este mes'}>
+              title="Genera cobros en Firestore para meses pasados que aún no tengan registro">
               <RefreshCw size={14} className={generando ? 'animate-spin' : ''} />
               {generando ? 'Generando...' : `Generar cobros de ${MESES[mesSel - 1]}`}
             </button>
           )}
-          <button onClick={() => { setEditCartera(null); setModalOpen(true); }}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow-sm hover:-translate-y-0.5">
-            <PlusCircle size={15} /> Nueva Cartera
-          </button>
-        </div>
-      </div>
 
-      {/* ── Navegador de mes ("pasar hojas") ── */}
-      <div className="flex items-center justify-center gap-3">
-        <button
-          onClick={irMesAnterior}
-          className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 flex items-center justify-center transition shadow-sm"
-          title="Mes anterior"
-        >
-          <ChevronLeft size={18} />
-        </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={irMesAnterior}
+              className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 flex items-center justify-center transition shadow-sm"
+              title="Mes anterior"
+            >
+              <ChevronLeft size={18} />
+            </button>
 
-        <div className={`flex items-center gap-3 px-6 py-2.5 rounded-2xl border font-semibold text-sm shadow-sm transition-all ${
-          esMesActual
-            ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200'
-            : esMesFuturo
-            ? 'bg-purple-50 border-purple-200 text-purple-700'
-            : 'bg-amber-50 border-amber-200 text-amber-700'
-        }`}>
-          <CalendarDays size={15} />
-          <span className="text-base font-bold">{MESES[mesSel - 1]} {anioSel}</span>
-          {esMesActual && (
-            <span className="ml-1 text-[10px] font-bold bg-white/25 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">Actual</span>
-          )}
-          {!esMesActual && esMesFuturo && (
-            <span className="ml-1 text-[10px] font-bold bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full uppercase tracking-wider">Futuro</span>
-          )}
-          {!esMesActual && !esMesFuturo && (
-            <span className="ml-1 text-[10px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full uppercase tracking-wider">Pasado</span>
-          )}
-        </div>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-semibold text-sm shadow-sm transition-all ${
+              esMesActual
+                ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200'
+                : esMesFuturo
+                ? 'bg-purple-50 border-purple-200 text-purple-700'
+                : 'bg-amber-50 border-amber-200 text-amber-700'
+            }`}>
+              <CalendarDays size={15} />
+              <span className="font-bold whitespace-nowrap">{MESES[mesSel - 1]} {anioSel}</span>
+              {esMesActual && (
+                <span className="text-[10px] font-bold bg-white/25 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">Actual</span>
+              )}
+              {!esMesActual && esMesFuturo && (
+                <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full uppercase tracking-wider">Futuro</span>
+              )}
+              {!esMesActual && !esMesFuturo && (
+                <span className="text-[10px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full uppercase tracking-wider">Pasado</span>
+              )}
+            </div>
 
-        <button
-          onClick={irMesSiguiente}
-          className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 flex items-center justify-center transition shadow-sm"
-          title="Mes siguiente"
-        >
-          <ChevronRight size={18} />
-        </button>
+            <button
+              onClick={irMesSiguiente}
+              className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 flex items-center justify-center transition shadow-sm"
+              title="Mes siguiente"
+            >
+              <ChevronRight size={18} />
+            </button>
 
-        {!esMesActual && (
-          <button
-            onClick={irHoy}
-            className="text-xs font-semibold text-indigo-500 hover:text-indigo-700 hover:underline transition px-2"
-          >
-            Ir a hoy
-          </button>
-        )}
-      </div>
-
-      {/* Banner: mes cerrado oficialmente → solo lectura */}
-      {mesCerrado && (
-        <div className="flex items-start gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-sm">
-          <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-slate-400" />
-          <div>
-            <span className="font-semibold">Mes cerrado — </span>
-            <strong>{MESES[mesSel - 1]} {anioSel}</strong> ya tiene cierre ejecutado.
-            Este período es de solo lectura; no se pueden generar ni modificar cobros.
+            {!esMesActual && (
+              <button
+                onClick={irHoy}
+                className="text-xs font-semibold text-indigo-500 hover:text-indigo-700 hover:underline transition px-1"
+              >
+                Hoy
+              </button>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Banner: mes pasado sin cierre → editable */}
-      {!esMesActual && !esMesFuturo && !mesCerrado && cobros.length > 0 && (
+      {/* Banners informativos */}
+      {mesPasado && cobrosDelMes.length > 0 && (
         <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
           <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-amber-500" />
           <div>
-            <span className="font-semibold">Período sin cerrar — </span>
+            <span className="font-semibold">Mes pasado — </span>
             estás viendo <strong>{MESES[mesSel - 1]} {anioSel}</strong>.
-            Puedes registrar pagos atrasados y generar cobros de carteras faltantes.
+            Puedes registrar pagos atrasados o generar cobros faltantes en Firestore.
           </div>
         </div>
       )}
 
-      {/* Banner: mes futuro con cobros anticipados */}
-      {esMesFuturo && !mesCerrado && cobros.length > 0 && (
-        <div className="flex items-start gap-3 px-4 py-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-800 text-sm">
-          <CalendarDays size={16} className="mt-0.5 flex-shrink-0 text-purple-500" />
+      {/* Banner: mes actual/futuro con proyección automática */}
+      {usaProyeccionDinamica && cobrosDelMes.length > 0 && (
+        <div className={`flex items-start gap-3 px-4 py-3 rounded-xl text-sm border ${
+          esMesFuturo
+            ? 'bg-purple-50 border-purple-200 text-purple-800'
+            : 'bg-indigo-50 border-indigo-200 text-indigo-800'
+        }`}>
+          <CalendarDays size={16} className={`mt-0.5 flex-shrink-0 ${esMesFuturo ? 'text-purple-500' : 'text-indigo-500'}`} />
           <div>
-            <span className="font-semibold">Mes futuro — </span>
-            hay cobros anticipados para <strong>{MESES[mesSel - 1]} {anioSel}</strong>.
-            Puedes generar los que falten o registrar pagos adelantados.
+            <span className="font-semibold">{esMesFuturo ? 'Mes futuro — ' : 'Mes actual — '}</span>
+            los cobros se calculan automáticamente desde las carteras activas.
+            {cobros.length < cobrosDelMes.length && (
+              <> Al registrar un pago se guarda en el sistema.</>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Banner: mes futuro con cobros anticipados (pagos adelantados reales) */}
+      {esMesFuturo && cobros.length > 0 && (
+        <div className="flex items-start gap-3 px-4 py-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-800 text-sm">
+          <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-sky-500" />
+          <div>
+            <span className="font-semibold">Pagos adelantados — </span>
+            hay {cobros.filter(c => c.estado === 'Pagado').length} cobro(s) ya registrados en Firestore para este mes.
           </div>
         </div>
       )}
@@ -699,7 +719,7 @@ export default function Carteras() {
           <div>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total {MESES[mesSel-1]}</p>
             <p className="text-lg font-bold text-slate-800">{formatCOP(totalGen)}</p>
-            <p className="text-[10px] text-slate-400">{cobros.length} carteras</p>
+            <p className="text-[10px] text-slate-400">{cobrosOrdenados.length} carteras</p>
           </div>
         </div>
 
@@ -741,16 +761,6 @@ export default function Carteras() {
         </div>
       </div>
 
-      {/* Guía rápida: adelantos vs caja */}
-      {(pagadosAnticipados.length > 0 || totalAdelantadoRecibido > 0) && (
-        <div className="px-4 py-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs sm:text-sm leading-relaxed">
-          <p className="font-semibold mb-1">¿Cómo leer los adelantos?</p>
-          <ul className="space-y-1 list-disc list-inside text-sky-800">
-            <li><strong>Recibió adelanto (azul):</strong> el cliente pagó hoy varios meses — el extra <em>sí suma</em> a la caja de {MESES[mesSel - 1]}.</li>
-            <li><strong>Pagado antes · sin caja:</strong> este período ya se pagó en un mes anterior — aparece pagado pero <em>no suma</em> otra vez a la caja.</li>
-          </ul>
-        </div>
-      )}
 
       {/* Buscador + tabs de vista */}
       <div className="space-y-3">
@@ -806,22 +816,14 @@ export default function Carteras() {
         </div>
       </div>
 
-      {cobros.length === 0 ? (
+      {cobrosDelMes.length === 0 ? (
         <div className="bg-white rounded-2xl border border-dashed border-slate-200 py-16 text-center">
           <Briefcase size={40} className="mx-auto text-slate-300 mb-3" />
           <p className="text-slate-500 font-medium">No hay cobros para {MESES[mesSel - 1]} {anioSel}</p>
-          {mesCerrado ? (
-            <p className="text-slate-400 text-xs mt-2">
-              Este mes ya tiene cierre ejecutado y no registró cobros.
-            </p>
-          ) : (
+          {mesPasado && cobrosDelMes.length === 0 ? (
             <>
               <p className="text-slate-400 text-xs mt-1 mb-3">
-                {esMesActual
-                  ? 'Usa el botón "Generar cobros" para crear los cobros del mes.'
-                  : esMesFuturo
-                  ? 'Puedes generar los cobros anticipadamente, o esperar al cierre del mes anterior.'
-                  : 'Este mes pasado no tiene cobros. Puedes generarlos para registrar pagos atrasados.'}
+                Este mes pasado no tiene cobros registrados. Puedes generarlos para el historial.
               </p>
               <button onClick={handleGenerar} disabled={generando}
                 className="mt-1 inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-5 py-2 rounded-xl text-sm font-semibold transition disabled:opacity-50">
@@ -829,7 +831,11 @@ export default function Carteras() {
                 {generando ? 'Generando...' : `Generar cobros de ${MESES[mesSel - 1]} ${anioSel}`}
               </button>
             </>
-          )}
+          ) : usaProyeccionDinamica ? (
+            <p className="text-slate-400 text-xs mt-2">
+              No hay carteras activas. Crea o reactiva carteras para ver los cobros proyectados de este mes.
+            </p>
+          ) : null}
         </div>
       ) : vistaTab === 'unificada' ? (
         cobrosOrdenados.length === 0 ? (

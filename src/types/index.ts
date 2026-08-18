@@ -22,9 +22,9 @@ export interface Cartera {
   clienteId: string;
   clienteNombre?: string;   // desnormalizado para consultas rápidas
   valorCartera: number;
-  costoTotal: number;
+  costoTotal?: number;
   fechaCreacion: Timestamp;
-  fechaRenovacion: Timestamp;
+  fechaRenovacion?: Timestamp;
   fechaVencimientoMensual: Timestamp;
   estado: EstadoCartera;
   activa?: boolean;
