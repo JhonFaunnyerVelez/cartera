@@ -18,7 +18,10 @@ export interface ResumenMensual {
   esMesActual: boolean;
   esMesFuturo: boolean;
   esMesPasado: boolean;
+  esCajaManual?: boolean;
 }
+
+export type CajaManualMap = Record<string, number>;
 
 export interface TotalesResumen {
   totalEsperado: number;
@@ -68,6 +71,22 @@ export function calcularResumenMes(cobros: CobroMensual[], mes: number, anio: nu
   };
 }
 
+export function aplicarCajaManualAResumen(
+  resumen: ResumenMensual,
+  cajaManual?: number
+): ResumenMensual {
+  if (cajaManual == null || cajaManual <= 0 || resumen.cantidadCobros > 0) return resumen;
+
+  return {
+    ...resumen,
+    totalCaja: cajaManual,
+    totalEsperado: cajaManual,
+    totalPorCobrar: 0,
+    pctRecaudo: 100,
+    esCajaManual: true,
+  };
+}
+
 export function sumarTotales(resumenes: ResumenMensual[]): TotalesResumen {
   const acum = resumenes.reduce(
     (acc, r) => ({
@@ -77,7 +96,7 @@ export function sumarTotales(resumenes: ResumenMensual[]): TotalesResumen {
       cantidadCobros: acc.cantidadCobros + r.cantidadCobros,
       cantidadPagados: acc.cantidadPagados + r.cantidadPagados,
       cantidadPendientes: acc.cantidadPendientes + r.cantidadPendientes,
-      mesesConDatos: acc.mesesConDatos + (r.cantidadCobros > 0 ? 1 : 0),
+      mesesConDatos: acc.mesesConDatos + (r.cantidadCobros > 0 || r.esCajaManual ? 1 : 0),
     }),
     {
       totalEsperado: 0,
@@ -111,23 +130,30 @@ function cobrosDelPeriodo(
 export function buildResumenesAnio(
   anio: number,
   cobrosReales: CobroMensual[],
-  carteras: Cartera[]
+  carteras: Cartera[],
+  cajaManual: CajaManualMap = {}
 ): ResumenMensual[] {
   return Array.from({ length: 12 }, (_, i) => {
     const mes = i + 1;
+    const id = formatPeriodoId(mes, anio);
     const cobros = cobrosDelPeriodo(cobrosReales, carteras, mes, anio);
-    return calcularResumenMes(cobros, mes, anio);
+    const resumen = calcularResumenMes(cobros, mes, anio);
+    return aplicarCajaManualAResumen(resumen, cajaManual[id]);
   });
 }
 
-/** Resúmenes de todos los meses que tienen cobros reales o proyección. */
+/** Resúmenes de todos los meses que tienen cobros reales, proyección o caja manual. */
 export function buildResumenesHistoricos(
   cobrosReales: CobroMensual[],
-  carteras: Cartera[]
+  carteras: Cartera[],
+  cajaManual: CajaManualMap = {}
 ): ResumenMensual[] {
   const periodos = new Set<string>();
   for (const c of cobrosReales) {
     periodos.add(formatPeriodoId(c.mes, c.anio));
+  }
+  for (const id of Object.keys(cajaManual)) {
+    if (cajaManual[id] > 0) periodos.add(id);
   }
 
   const { mes: mesAct, anio: anioAct } = getMesAnioActual();
@@ -140,15 +166,26 @@ export function buildResumenesHistoricos(
     const mes = Number(mm);
     const anio = Number(yyyy);
     const cobros = cobrosDelPeriodo(cobrosReales, carteras, mes, anio);
-    if (cobros.length === 0) continue;
-    resumenes.push(calcularResumenMes(cobros, mes, anio));
+    const resumen = aplicarCajaManualAResumen(
+      calcularResumenMes(cobros, mes, anio),
+      cajaManual[id]
+    );
+    if (cobros.length === 0 && !resumen.esCajaManual) continue;
+    resumenes.push(resumen);
   }
 
   return resumenes.sort((a, b) => b.anio - a.anio || b.mes - a.mes);
 }
 
-export function obtenerAniosDisponibles(cobros: CobroMensual[]): number[] {
+export function obtenerAniosDisponibles(
+  cobros: CobroMensual[],
+  cajaManual: CajaManualMap = {}
+): number[] {
   const anios = new Set<number>([new Date().getFullYear()]);
   for (const c of cobros) anios.add(c.anio);
+  for (const id of Object.keys(cajaManual)) {
+    const anio = Number(id.split('-')[1]);
+    if (!isNaN(anio)) anios.add(anio);
+  }
   return [...anios].sort((a, b) => b - a);
 }

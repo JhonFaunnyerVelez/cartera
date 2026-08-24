@@ -46,13 +46,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
-        <p className="text-slate-500 text-sm mt-1">
-          Ganancia anual, recaudo por mes y alertas operativas de tu cartera.
-        </p>
-      </div>
-
       <ResumenAnualPanel />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

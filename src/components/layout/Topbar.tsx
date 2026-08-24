@@ -2,22 +2,34 @@ import { useLocation } from 'react-router-dom';
 import { Bell, Menu } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLayout } from '../../context/LayoutContext';
+import { useInversiones } from '../../hooks/useInversiones';
 
-const titles: Record<string, string> = {
+const staticTitles: Record<string, string> = {
   '/': 'Dashboard',
+  '/dashboard-general': 'Dashboard General',
   '/clientes': 'Gestión de Clientes',
   '/carteras': 'Cobros del Mes',
   '/recaudos': 'Recaudos',
+  '/admin/inversiones': 'Administración — Inversiones',
 };
 
 export default function Topbar() {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const { setMobileMenuOpen } = useLayout();
+  const { inversiones } = useInversiones();
 
-  const title =
-    titles[pathname] ||
-    (pathname.startsWith('/clientes/') ? 'Detalle del Cliente' : 'CartéraApp');
+  let title = staticTitles[pathname];
+
+  if (!title && pathname.startsWith('/inversiones/')) {
+    const slug = pathname.split('/')[2];
+    const inv = inversiones.find(i => i.slug === slug);
+    title = inv?.nombre || 'Inversión';
+  }
+
+  if (!title) {
+    title = pathname.startsWith('/clientes/') ? 'Detalle del Cliente' : 'CartéraApp';
+  }
 
   return (
     <header className="h-14 sm:h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 sticky top-0 z-20 gap-3">

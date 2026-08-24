@@ -7,9 +7,11 @@ import Clientes from './pages/Clientes';
 import ClienteDetalle from './pages/ClienteDetalle';
 import Carteras from './pages/Carteras';
 import Recaudos from './pages/Recaudos';
+import InversionPage from './pages/InversionPage';
+import AdminInversiones from './pages/AdminInversiones';
+import DashboardGeneral from './pages/DashboardGeneral';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
-// Protege rutas privadas — redirige a /login si no está autenticado
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner fullScreen />;
@@ -17,7 +19,6 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Redirige al dashboard si ya está autenticado
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner fullScreen />;
@@ -32,10 +33,16 @@ function AppRoutes() {
 
       <Route element={<PrivateRoute><DashboardLayout /></PrivateRoute>}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/dashboard-general" element={<DashboardGeneral />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/clientes/:id" element={<ClienteDetalle />} />
         <Route path="/carteras" element={<Carteras />} />
         <Route path="/recaudos" element={<Recaudos />} />
+        <Route path="/inversiones/:slug" element={<InversionPage />} />
+        <Route path="/admin/inversiones" element={<AdminInversiones />} />
+        {/* Rutas legacy → redirección */}
+        <Route path="/inversion-oro" element={<Navigate to="/inversiones/oro" replace />} />
+        <Route path="/sueldo-cosolar" element={<Navigate to="/inversiones/cosolar" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

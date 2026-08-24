@@ -1,16 +1,34 @@
+import { useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Briefcase, LogOut, ChevronRight,
-  TrendingUp, PanelLeftClose, PanelLeftOpen, X,
+  TrendingUp, PanelLeftClose, PanelLeftOpen, X, PieChart, Settings,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLayout } from '../../context/LayoutContext';
+import { useInversiones } from '../../hooks/useInversiones';
+import { getInversionIcon } from '../../utils/inversionIcons';
+import type { LucideIcon } from 'lucide-react';
 
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/clientes', label: 'Clientes', icon: Users },
-  { to: '/carteras', label: 'Carteras', icon: Briefcase },
-  { to: '/recaudos', label: 'Recaudos', icon: TrendingUp },
+type MenuItem = { to: string; label: string; icon: LucideIcon; end?: boolean };
+type MenuBlock = { title: string; items: MenuItem[] };
+
+const staticBlocks: MenuBlock[] = [
+  {
+    title: 'General',
+    items: [
+      { to: '/dashboard-general', label: 'Dashboard General', icon: PieChart },
+    ],
+  },
+  {
+    title: 'CartéraApp',
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/clientes', label: 'Clientes', icon: Users },
+      { to: '/carteras', label: 'Carteras', icon: Briefcase },
+      { to: '/recaudos', label: 'Recaudos', icon: TrendingUp },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -21,6 +39,7 @@ export default function Sidebar({ variant }: SidebarProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { sidebarCollapsed, toggleSidebarCollapsed, closeMobileMenu } = useLayout();
+  const { activas: inversiones } = useInversiones();
   const collapsed = variant === 'desktop' && sidebarCollapsed;
   const isMobile = variant === 'mobile';
 
@@ -30,9 +49,31 @@ export default function Sidebar({ variant }: SidebarProps) {
     navigate('/login');
   };
 
-  const navCls = collapsed
-    ? 'justify-center px-0 py-2.5'
-    : '';
+  const navCls = collapsed ? 'justify-center px-0 py-2.5' : '';
+
+  const menuBlocks = useMemo(() => {
+    const blocks: MenuBlock[] = [...staticBlocks];
+
+    if (inversiones.length > 0) {
+      blocks.push({
+        title: 'Inversiones',
+        items: inversiones.map(inv => ({
+          to: `/inversiones/${inv.slug}`,
+          label: inv.nombre,
+          icon: getInversionIcon(inv.icon),
+        })),
+      });
+    }
+
+    blocks.push({
+      title: 'Administración',
+      items: [
+        { to: '/admin/inversiones', label: 'Configurar inversiones', icon: Settings },
+      ],
+    });
+
+    return blocks;
+  }, [inversiones]);
 
   return (
     <aside
@@ -41,7 +82,6 @@ export default function Sidebar({ variant }: SidebarProps) {
       }`}
       style={{ background: 'linear-gradient(180deg, #1e1b4b 0%, #312e81 100%)' }}
     >
-      {/* Logo */}
       <div className={`border-b border-white/10 flex items-center ${collapsed ? 'px-3 py-4 justify-center' : 'px-5 py-5 justify-between gap-2'}`}>
         <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : 'min-w-0'}`}>
           <div className="w-9 h-9 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shrink-0">
@@ -66,36 +106,43 @@ export default function Sidebar({ variant }: SidebarProps) {
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className={`flex-1 py-5 space-y-1 overflow-y-auto ${collapsed ? 'px-2' : 'px-3'}`}>
-        {!collapsed && (
-          <p className="text-indigo-400 text-xs font-semibold uppercase tracking-wider px-3 mb-3">
-            Menú principal
-          </p>
-        )}
-        {navItems.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            title={collapsed ? label : undefined}
-            onClick={closeMobileMenu}
-            className={({ isActive }) =>
-              `sidebar-link ${isActive ? 'active' : ''} ${navCls}`
-            }
-          >
-            <Icon size={18} className="shrink-0" />
-            {!collapsed && (
-              <>
-                <span className="truncate">{label}</span>
-                <ChevronRight size={14} className="ml-auto opacity-50 shrink-0" />
-              </>
+      <nav className={`flex-1 py-5 overflow-y-auto ${collapsed ? 'px-2 space-y-3' : 'px-3 space-y-5'}`}>
+        {menuBlocks.map((block, blockIdx) => (
+          <div key={`${block.title}-${blockIdx}`}>
+            {blockIdx > 0 && (
+              <div className={`${collapsed ? 'my-2 mx-1' : 'mb-3 mt-1'} border-t border-white/10`} />
             )}
-          </NavLink>
+            {!collapsed && (
+              <p className="text-indigo-400 text-xs font-semibold uppercase tracking-wider px-3 mb-2">
+                {block.title}
+              </p>
+            )}
+            <div className="space-y-1">
+              {block.items.map(item => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  title={collapsed ? item.label : undefined}
+                  onClick={closeMobileMenu}
+                  className={({ isActive }) =>
+                    `sidebar-link ${isActive ? 'active' : ''} ${navCls}`
+                  }
+                >
+                  <item.icon size={18} className="shrink-0" />
+                  {!collapsed && (
+                    <>
+                      <span className="truncate">{item.label}</span>
+                      <ChevronRight size={14} className="ml-auto opacity-50 shrink-0" />
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
-      {/* Collapse toggle — solo desktop */}
       {!isMobile && (
         <div className={`px-3 pb-2 ${collapsed ? 'flex justify-center' : ''}`}>
           <button
@@ -110,7 +157,6 @@ export default function Sidebar({ variant }: SidebarProps) {
         </div>
       )}
 
-      {/* User Info + Logout */}
       <div className={`border-t border-white/10 ${collapsed ? 'px-2 py-3' : 'px-3 py-4'}`}>
         {!collapsed ? (
           <div className="flex items-center gap-3 px-2 py-2 mb-2 min-w-0">

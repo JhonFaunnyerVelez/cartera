@@ -74,10 +74,139 @@ export interface CierreHistorico {
   ejecutadoPor: string;     // email del usuario que ejecutó el cierre
 }
 
+/** Caja registrada a mano para meses anteriores al uso de la app. */
+export interface CajaManual {
+  id: string;               // formato "MM-YYYY"
+  mes: number;
+  anio: number;
+  totalCaja: number;
+  notas?: string;
+  fechaActualizacion: Timestamp;
+}
+
 // ─── PAGOS (legacy, opcional) ─────────────────────────────────────────────────
 export interface Pago {
   id: string;
   carteraId: string;
   monto: number;
   fechaPago: Timestamp;
+}
+
+// ─── INVERSIÓN ORO ────────────────────────────────────────────────────────────
+export type TipoMovimientoOro = 'ingreso' | 'gasto';
+
+export interface MovimientoOro {
+  id: string;
+  tipo: TipoMovimientoOro;
+  monto: number;
+  descripcion: string;
+  mes: number;
+  anio: number;
+  fecha: Timestamp;
+  notas?: string;
+  fechaCreacion: Timestamp;
+}
+
+export interface ResumenOroMensual {
+  id: string;
+  mes: number;
+  anio: number;
+  totalIngresos: number;
+  totalGastos: number;
+  balance: number;
+  cantidadMovimientos: number;
+  cantidadIngresos: number;
+  cantidadGastos: number;
+  esMesActual: boolean;
+  esMesFuturo: boolean;
+  esMesPasado: boolean;
+}
+
+// ─── SUELDO COSOLAR ───────────────────────────────────────────────────────────
+export type TipoMovimientoCosolar = 'ingreso' | 'gasto';
+
+export interface MovimientoCosolar {
+  id: string;
+  tipo: TipoMovimientoCosolar;
+  monto: number;
+  descripcion: string;
+  mes: number;
+  anio: number;
+  fecha: Timestamp;
+  notas?: string;
+  fechaCreacion: Timestamp;
+}
+
+export interface ResumenCosolarMensual {
+  id: string;
+  mes: number;
+  anio: number;
+  totalIngresos: number;
+  totalGastos: number;
+  balance: number;
+  cantidadMovimientos: number;
+  cantidadIngresos: number;
+  cantidadGastos: number;
+  esMesActual: boolean;
+  esMesFuturo: boolean;
+  esMesPasado: boolean;
+}
+
+// ─── INVERSIONES CONFIGURABLES ──────────────────────────────────────────────────
+export type InversionColorName =
+  | 'amber' | 'sky' | 'emerald' | 'violet' | 'rose' | 'orange' | 'teal' | 'indigo';
+
+export type TipoMovimientoInversion = 'ingreso' | 'gasto';
+
+export interface InversionLabels {
+  balanceNeto: string;
+  ingresosTitulo: string;
+  gastosTitulo: string;
+  ingresoPlaceholder: string;
+  gastoPlaceholder: string;
+  ingresoFormLabel: string;
+  movimientosSubtitulo: string;
+  historicoSubtitulo: string;
+  resumenSubtitulo: string;
+}
+
+export interface InversionConfig {
+  id: string;
+  slug: string;
+  nombre: string;
+  descripcion: string;
+  color: InversionColorName;
+  icon: string;
+  orden: number;
+  activo: boolean;
+  labels: InversionLabels;
+  coleccionLegacy?: string;
+}
+
+export interface MovimientoInversion {
+  id: string;
+  inversionId: string;
+  tipo: TipoMovimientoInversion;
+  monto: number;
+  descripcion: string;
+  mes: number;
+  anio: number;
+  fecha: Timestamp;
+  notas?: string;
+  fechaCreacion: Timestamp;
+}
+
+export interface ResumenInversionMensual {
+  id: string;
+  mes: number;
+  anio: number;
+  totalIngresos: number;
+  totalGastos: number;
+  balance: number;
+  cantidadMovimientos: number;
+  cantidadIngresos: number;
+  cantidadGastos: number;
+  esMesActual: boolean;
+  esMesFuturo: boolean;
+  esMesPasado: boolean;
 }
