@@ -9,6 +9,7 @@ import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import CarteraForm from '../components/carteras/CarteraForm';
+import RegistroPagoModal from '../components/carteras/RegistroPagoModal';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { useState, useMemo, useEffect } from 'react';
 import type { Cartera, CobroMensual } from '../types';
@@ -48,6 +49,7 @@ export default function ClienteDetalle() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [historial, setHistorial] = useState<CobroMensual[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
+  const [pagoCobro, setPagoCobro] = useState<CobroMensual | null>(null);
 
   // Estado para el modal de confirmación bonito
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -90,33 +92,43 @@ export default function ClienteDetalle() {
   const openEditCartera = (c: Cartera) => { setEditingCartera(c); setIsModalOpen(true); };
   const closeModal = () => { setIsModalOpen(false); setEditingCartera(null); };
 
-  const handlePago = async (cobro: CobroMensual, cartera: Cartera, isPagado: boolean) => {
+  const handlePago = (cobro: CobroMensual, cartera: Cartera, isPagado: boolean) => {
     const mesActual = hoy.getMonth() + 1;
     const anioActual = hoy.getFullYear();
     const cobroAlineado = alinearCobroConCartera(cobro, cartera, mesActual, anioActual);
 
-    setConfirmConfig({
-      isOpen: true,
-      title: isPagado ? '¿Revertir pago?' : '¿Registrar pago?',
-      message: isPagado
-        ? `¿Estás seguro de que quieres revertir el pago de ${cobroAlineado.carteraNombre}?`
-        : `¿Registrar pago de ${formatCOP(cobroAlineado.valorCobro)} por ${cobroAlineado.carteraNombre}?`,
-      type: isPagado ? 'danger' : 'success',
-      onConfirm: async () => {
-        setLoadingId(cobro.id);
-        try {
-          if (isPagado) await revertirPago(cobro);
-          else {
-            let cobroPago = cobroAlineado;
-            if (esCobroVirtual(cobro.id)) {
-              const id = await materializarCobroVirtual(cobroAlineado);
-              cobroPago = { ...cobroAlineado, id };
-            }
-            await registrarPago(cobroPago);
-          }
-        } finally { setLoadingId(null); }
+    if (isPagado) {
+      setConfirmConfig({
+        isOpen: true,
+        title: '¿Revertir pago?',
+        message: `¿Estás seguro de que quieres revertir el pago de ${cobroAlineado.carteraNombre}?`,
+        type: 'danger',
+        onConfirm: async () => {
+          setLoadingId(cobro.id);
+          try {
+            await revertirPago(cobro);
+          } finally { setLoadingId(null); }
+        }
+      });
+      return;
+    }
+    setPagoCobro(cobroAlineado);
+  };
+
+  const confirmarPago = async (monto: number) => {
+    if (!pagoCobro) return;
+    setLoadingId(pagoCobro.id);
+    try {
+      let cobroPago = { ...pagoCobro, valorCobro: monto };
+      if (esCobroVirtual(pagoCobro.id)) {
+        const id = await materializarCobroVirtual(cobroPago);
+        cobroPago = { ...cobroPago, id };
       }
-    });
+      await registrarPago(cobroPago);
+      setPagoCobro(null);
+    } finally {
+      setLoadingId(null);
+    }
   };
 
   const handleCortesia = async (cobro: CobroMensual, cartera: Cartera) => {
@@ -480,6 +492,16 @@ export default function ClienteDetalle() {
           </div>
         )}
       </div>
+
+      <Modal isOpen={!!pagoCobro} onClose={() => setPagoCobro(null)} title="Registrar pago" size="md">
+        {pagoCobro && (
+          <RegistroPagoModal
+            cobro={pagoCobro}
+            onClose={() => setPagoCobro(null)}
+            onConfirm={confirmarPago}
+          />
+        )}
+      </Modal>
 
       <ConfirmModal
         isOpen={confirmConfig.isOpen}

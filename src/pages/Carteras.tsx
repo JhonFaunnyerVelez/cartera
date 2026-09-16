@@ -1,10 +1,10 @@
 import { useState, useMemo, Fragment } from 'react';
 import {
   Search, CheckCircle2, XCircle, Pencil,
-  Trash2, RefreshCw, AlertCircle, DollarSign, Clock,
+  Trash2, RefreshCw, AlertCircle,
   ChevronUp, ChevronDown, Briefcase, CalendarDays, Gift,
   ChevronLeft, ChevronRight, Power, PowerOff,
-  List, Calendar, Building2, CalendarClock, FastForward,
+  List, Calendar, Building2,
 } from 'lucide-react';
 import { useCobros } from '../hooks/useCobros';
 import { useCarteras } from '../hooks/useCarteras';
@@ -15,6 +15,7 @@ import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import CarteraForm from '../components/carteras/CarteraForm';
 import PagoAdelantoModal from '../components/carteras/PagoAdelantoModal';
+import RegistroPagoModal from '../components/carteras/RegistroPagoModal';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { cobroVisibleEnMes, esCarteraActiva } from '../utils/activo';
 import { esMesPasado } from '../utils/periodo';
@@ -26,7 +27,6 @@ import {
 import {
   BadgePagoAnticipado,
   BadgeRecibioAdelanto,
-  MontoAdelantadoExtra,
   clasesFilaAdelanto,
   etiquetaMesRecibido,
   esPagoAnticipado,
@@ -146,16 +146,17 @@ function CobroRow({
   const isLoading = loadingId === cobro.id;
   const estVisual = getEstadoVisualCobro(cobro);
 
+  const conAdelanto = tieneAdelantoRecibido(cobro) && !esPagoAnticipado(cobro);
   const diaCls = vistaUnificada
     ? estVisual === 'pagado'
-      ? 'bg-emerald-500 text-white'
+      ? conAdelanto ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'
       : estVisual === 'vencido'
       ? 'bg-rose-500 text-white'
       : 'bg-slate-300 text-slate-800'
     : isMora
     ? 'bg-rose-500 text-white'
     : isPagado
-    ? 'bg-emerald-500 text-white'
+    ? conAdelanto ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'
     : 'bg-indigo-300 text-indigo-900';
 
   return (
@@ -212,23 +213,27 @@ function CobroRow({
       {/* Valor */}
       <td>
         <div className="flex flex-col justify-center">
-          <span className={`font-bold ${
-            cobro.esCortesia 
-              ? 'text-slate-400 line-through' 
-              : esPagoAnticipado(cobro)
-              ? 'text-slate-400'
-              : isPagado ? 'text-emerald-600' : isMora ? 'text-rose-600' : 'text-slate-800'
-          }`}>
-            {formatCOP(cobro.valorCobro)}
-          </span>
+          {conAdelanto ? (
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className="font-bold text-emerald-600">{formatCOP(cobro.valorCobro)}</span>
+              <span className="font-bold text-sky-600">{formatCOP(cobro.montoAdelantado!)}</span>
+            </div>
+          ) : (
+            <span className={`font-bold ${
+              cobro.esCortesia
+                ? 'text-slate-400 line-through'
+                : esPagoAnticipado(cobro)
+                ? 'text-slate-400'
+                : isPagado ? 'text-emerald-600' : isMora ? 'text-rose-600' : 'text-slate-800'
+            }`}>
+              {formatCOP(cobro.valorCobro)}
+            </span>
+          )}
           {esPagoAnticipado(cobro) && (
             <span className="text-[10px] font-semibold text-sky-700">Sin caja en este mes</span>
           )}
           {cobro.esCortesia && (
             <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-tighter">Cortesía</span>
-          )}
-          {cobro.montoAdelantado && cobro.montoAdelantado > 0 && (
-            <MontoAdelantadoExtra monto={cobro.montoAdelantado} />
           )}
         </div>
       </td>
@@ -245,13 +250,6 @@ function CobroRow({
           esPagoAnticipado(cobro) ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-800 border border-sky-300">
               <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Pagado antes
-            </span>
-          ) : tieneAdelantoRecibido(cobro) ? (
-            <span className="inline-flex flex-col gap-0.5 items-start">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Pagado
-              </span>
-              <span className="text-[10px] font-bold text-sky-700">+ adelanto en caja</span>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -487,6 +485,7 @@ export default function Carteras() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editCartera, setEditCartera] = useState<Cartera | null>(null);
   const [adelantoCartera, setAdelantoCartera] = useState<Cartera | null>(null);
+  const [pagoCobro, setPagoCobro] = useState<CobroMensual | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -559,7 +558,6 @@ export default function Carteras() {
     () => pagadosCaja.filter(c => tieneAdelantoRecibido(c)),
     [pagadosCaja]
   );
-
   const totalPend = useMemo(() => pendientes.reduce((s, c) => s + c.valorCobro, 0), [pendientes]);
   const totalPag  = useMemo(() => 
     pagadosCaja.reduce((s, c) => s + c.valorCobro, 0), 
@@ -577,39 +575,58 @@ export default function Carteras() {
     () => pagadosAnticipados.reduce((s, c) => s + c.valorCobro, 0),
     [pagadosAnticipados]
   );
-
   const totalCaja = totalPag + totalAdelantadoRecibido;
-  const hayMovimientosSinCaja =
-    totalAdelantadoRecibido > 0 ||
-    pagadosCortesia.length > 0 ||
-    pagadosAnticipados.length > 0;
 
   const totalGen  = useMemo(() => cobrosOrdenados.reduce((s, c) => s + c.valorCobro, 0), [cobrosOrdenados]);
+  /** Dinero que sí puede entrar a caja este mes (sin cortesías ni pagados en otro mes). */
+  const realmenteACobrar = useMemo(
+    () => Math.max(0, totalGen - totalCortesiaNominal - totalAnticipadoNominal),
+    [totalGen, totalCortesiaNominal, totalAnticipadoNominal]
+  );
+  const carterasRealmenteACobrar = useMemo(
+    () => cobrosOrdenados.filter(c => !c.esCortesia && !esPagoAnticipado(c)).length,
+    [cobrosOrdenados]
+  );
+  const pctPagos = carterasRealmenteACobrar > 0
+    ? Math.round((pagadosCaja.length / carterasRealmenteACobrar) * 100)
+    : 0;
+  const pctRecaudoReal = realmenteACobrar > 0
+    ? Math.round((totalPag / realmenteACobrar) * 100)
+    : 0;
 
-  const handlePago = async (cobro: CobroMensual, isPagado: boolean) => {
-    setConfirmConfig({
-      isOpen: true,
-      title: isPagado ? '¿Revertir pago?' : '¿Registrar pago?',
-      message: isPagado
-        ? `¿Estás seguro de que quieres revertir el pago de ${cobro.carteraNombre}?`
-        : `¿Registrar pago de ${formatCOP(cobro.valorCobro)} por ${cobro.carteraNombre}?`,
-      type: isPagado ? 'danger' : 'success',
-      onConfirm: async () => {
-        setLoadingId(cobro.id);
-        try {
-          if (isPagado) {
+  const handlePago = (cobro: CobroMensual, isPagado: boolean) => {
+    if (isPagado) {
+      setConfirmConfig({
+        isOpen: true,
+        title: '¿Revertir pago?',
+        message: `¿Estás seguro de que quieres revertir el pago de ${cobro.carteraNombre}?`,
+        type: 'danger',
+        onConfirm: async () => {
+          setLoadingId(cobro.id);
+          try {
             await revertirPago(cobro);
-          } else {
-            let cobroPago = cobro;
-            if (esCobroVirtual(cobro.id)) {
-              const id = await materializarCobroVirtual(cobro);
-              cobroPago = { ...cobro, id };
-            }
-            await registrarPago(cobroPago);
-          }
-        } finally { setLoadingId(null); }
+          } finally { setLoadingId(null); }
+        }
+      });
+      return;
+    }
+    setPagoCobro(cobro);
+  };
+
+  const confirmarPago = async (monto: number) => {
+    if (!pagoCobro) return;
+    setLoadingId(pagoCobro.id);
+    try {
+      let cobroPago = { ...pagoCobro, valorCobro: monto };
+      if (esCobroVirtual(pagoCobro.id)) {
+        const id = await materializarCobroVirtual(cobroPago);
+        cobroPago = { ...cobroPago, id };
       }
-    });
+      await registrarPago(cobroPago);
+      setPagoCobro(null);
+    } finally {
+      setLoadingId(null);
+    }
   };
 
   const handleCortesia = async (cobro: CobroMensual) => {
@@ -804,108 +821,98 @@ export default function Carteras() {
       )}
 
       {/* KPIs principales */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl border border-indigo-100 p-4 flex items-center gap-3 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
-            <Clock size={18} className="text-indigo-600" />
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.45fr_0.88fr_0.82fr] gap-2">
+          <div className="bg-white rounded-xl border border-indigo-100 p-3 shadow-sm grid grid-cols-[0.85fr_1.15fr_0.75fr] divide-x divide-indigo-100 gap-2 items-start">
+            <div className="min-w-0 pr-1">
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">Lo que va a cobrar</p>
+              <p className="text-base font-bold text-slate-700 tabular-nums mt-1">{formatCOP(totalGen)}</p>
+              <p className="text-[10px] text-slate-400 mt-1">{cobrosOrdenados.length} carteras</p>
+            </div>
+            <div className="min-w-0 px-1">
+              <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider leading-tight">Realmente a cobrar</p>
+              <p className="text-base font-bold text-indigo-700 tabular-nums mt-1">{formatCOP(realmenteACobrar)}</p>
+              <p className="text-[10px] text-slate-400 mt-1">{carterasRealmenteACobrar} pagos</p>
+              <p className="text-[10px] text-slate-400 tabular-nums leading-snug">
+                {formatCOP(totalGen)} − {formatCOP(totalCortesiaNominal)} − {formatCOP(totalAnticipadoNominal)}
+              </p>
+            </div>
+            <div className="min-w-0 pl-1">
+              <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider leading-tight">Pagos cobrados</p>
+              <p className="text-base font-bold text-indigo-700 tabular-nums mt-1">{pctPagos}%</p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {pagadosCaja.length}/{carterasRealmenteACobrar}
+                {pctRecaudoReal !== pctPagos && ` · ${pctRecaudoReal}% $`}
+              </p>
+              <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
+                <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(100, pctPagos)}%` }} />
+              </div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total {MESES[mesSel-1]}</p>
-            <p className="text-lg font-bold text-slate-800">{formatCOP(totalGen)}</p>
-            <p className="text-[10px] text-slate-400">{cobrosOrdenados.length} carteras</p>
+
+          <div className="bg-white rounded-xl border border-emerald-100 p-3 shadow-sm grid grid-cols-2 divide-x divide-emerald-100 gap-2 items-start">
+            <div className="min-w-0 pr-1">
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">Ya cobrado</p>
+              <p className="text-base font-bold text-emerald-600 tabular-nums mt-1">{formatCOP(totalPag)}</p>
+              <p className="text-[10px] text-slate-400 mt-1">{pagadosCaja.length} pagos</p>
+            </div>
+            <div className="min-w-0 pl-2">
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">En caja</p>
+              <p className="text-base font-bold text-sky-700 tabular-nums mt-1">{formatCOP(totalCaja)}</p>
+              <p className="text-[10px] text-slate-400 mt-1 tabular-nums leading-snug">
+                {formatCOP(totalPag)} + {formatCOP(totalAdelantadoRecibido)}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-rose-100 p-3 shadow-sm">
+            <div className="min-w-0">
+              <p className="text-[10px] text-rose-600 font-bold uppercase tracking-wider leading-tight">Lo que falta</p>
+              <p className="text-base font-bold text-rose-600 tabular-nums mt-1">{formatCOP(totalPend)}</p>
+              <p className="text-[10px] text-slate-400 mt-1">{pendientes.length} pendientes</p>
+              <p className="text-[10px] text-slate-400 tabular-nums leading-snug">
+                {formatCOP(realmenteACobrar)} − {formatCOP(totalPag)}
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-rose-100 p-4 flex items-center gap-3 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0">
-            <AlertCircle size={18} className="text-rose-600" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          <div className="rounded-xl border border-slate-200 p-3 grid grid-cols-2 divide-x divide-slate-200 gap-3 bg-white shadow-sm">
+            <div className="min-w-0 pr-1">
+              <p className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${totalAdelantadoRecibido > 0 ? 'text-sky-700' : 'text-slate-500'}`}>Adelantos recibidos</p>
+              <p className={`text-base font-bold tabular-nums mt-1 ${totalAdelantadoRecibido > 0 ? 'text-sky-800' : 'text-slate-500'}`}>
+                {formatCOP(totalAdelantadoRecibido)}
+              </p>
+              <p className={`text-[10px] mt-1 ${totalAdelantadoRecibido > 0 ? 'text-sky-600/90' : 'text-slate-400'}`}>
+                {pagadosConAdelanto.length} pago{pagadosConAdelanto.length !== 1 ? 's' : ''}
+              </p>
+              <p className="text-[10px] text-slate-400">Suma a caja · meses futuros</p>
+            </div>
+            <div className="min-w-0 pl-2">
+              <p className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${pagadosCortesia.length > 0 ? 'text-violet-700' : 'text-slate-500'}`}>Cortesías</p>
+              <p className={`text-base font-bold tabular-nums mt-1 ${pagadosCortesia.length > 0 ? 'text-violet-800 line-through decoration-violet-400/60' : 'text-slate-500'}`}>
+                {formatCOP(totalCortesiaNominal)}
+              </p>
+              <p className={`text-[10px] mt-1 ${pagadosCortesia.length > 0 ? 'text-violet-600/90' : 'text-slate-400'}`}>
+                {pagadosCortesia.length} perdonada{pagadosCortesia.length !== 1 ? 's' : ''}
+              </p>
+              <p className="text-[10px] text-slate-400">$0 en caja</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Falta cobrar</p>
-            <p className="text-lg font-bold text-rose-600">{formatCOP(totalPend)}</p>
-            <p className="text-[10px] text-slate-400">{pendientes.length} pendientes</p>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-2xl border border-emerald-100 p-4 flex items-center gap-3 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 size={18} className="text-emerald-600" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Recibido en caja</p>
-            <p className="text-lg font-bold text-emerald-600">{formatCOP(totalCaja)}</p>
-            <p className="text-[10px] text-slate-400">
-              {pagadosCaja.length} pago{pagadosCaja.length !== 1 ? 's' : ''}
-              {totalAdelantadoRecibido > 0 && ` · incl. adelantos`}
+          <div className={`rounded-xl border p-3 ${pagadosAnticipados.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wider ${pagadosAnticipados.length > 0 ? 'text-amber-700' : 'text-slate-500'}`}>Pagados antes</p>
+            <p className={`text-base font-bold tabular-nums mt-1 ${pagadosAnticipados.length > 0 ? 'text-amber-800' : 'text-slate-500'}`}>
+              {formatCOP(totalAnticipadoNominal)}
             </p>
-          </div>
-        </div>
-
-        <div className="bg-indigo-600 rounded-2xl p-4 flex items-center gap-3 shadow-lg shadow-indigo-200">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-            <DollarSign size={18} className="text-white" />
-          </div>
-          <div className="text-white min-w-0">
-            <p className="text-[10px] opacity-80 font-bold uppercase tracking-wider">Caja disponible</p>
-            <p className="text-lg font-bold">{formatCOP(totalPag)}</p>
-            <p className="text-[10px] opacity-90 font-medium">
-              Ingreso real de {MESES[mesSel-1].toLowerCase()}
+            <p className={`text-[10px] mt-1 ${pagadosAnticipados.length > 0 ? 'text-amber-600/90' : 'text-slate-400'}`}>
+              {pagadosAnticipados.length} cobro{pagadosAnticipados.length !== 1 ? 's' : ''} · pagaron en otro mes
             </p>
+            <p className="text-[10px] text-slate-400">Sin caja en este mes</p>
           </div>
         </div>
       </div>
-
-      {/* KPIs: dinero que no cuenta como disponible */}
-      {hayMovimientosSinCaja && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {totalAdelantadoRecibido > 0 && (
-            <div className="bg-sky-50 rounded-2xl border border-sky-200 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center flex-shrink-0">
-                <CalendarClock size={18} className="text-sky-700" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] text-sky-700 font-bold uppercase tracking-wider">Adelantos recibidos</p>
-                <p className="text-lg font-bold text-sky-800">{formatCOP(totalAdelantadoRecibido)}</p>
-                <p className="text-[10px] text-sky-600/90">
-                  {pagadosConAdelanto.length} pago{pagadosConAdelanto.length !== 1 ? 's' : ''} · reservado para meses futuros
-                </p>
-              </div>
-            </div>
-          )}
-
-          {pagadosCortesia.length > 0 && (
-            <div className="bg-violet-50 rounded-2xl border border-violet-200 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
-                <Gift size={18} className="text-violet-700" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] text-violet-700 font-bold uppercase tracking-wider">Cortesías</p>
-                <p className="text-lg font-bold text-violet-800 line-through decoration-violet-400/60">
-                  {formatCOP(totalCortesiaNominal)}
-                </p>
-                <p className="text-[10px] text-violet-600/90">
-                  {pagadosCortesia.length} perdonada{pagadosCortesia.length !== 1 ? 's' : ''} · $0 en caja
-                </p>
-              </div>
-            </div>
-          )}
-
-          {pagadosAnticipados.length > 0 && (
-            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
-                <FastForward size={18} className="text-slate-600" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">Pagados antes</p>
-                <p className="text-lg font-bold text-slate-700">{formatCOP(totalAnticipadoNominal)}</p>
-                <p className="text-[10px] text-slate-500">
-                  {pagadosAnticipados.length} cobro{pagadosAnticipados.length !== 1 ? 's' : ''} · sin caja este mes
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
 
       {/* Buscador + tabs de vista */}
@@ -1069,6 +1076,16 @@ export default function Carteras() {
             mesActual={mesActual}
             anioActual={anioActual}
             onClose={() => setAdelantoCartera(null)}
+          />
+        )}
+      </Modal>
+
+      <Modal isOpen={!!pagoCobro} onClose={() => setPagoCobro(null)} title="Registrar pago" size="md">
+        {pagoCobro && (
+          <RegistroPagoModal
+            cobro={pagoCobro}
+            onClose={() => setPagoCobro(null)}
+            onConfirm={confirmarPago}
           />
         )}
       </Modal>
