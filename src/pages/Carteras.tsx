@@ -1,11 +1,10 @@
-import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useMemo, Fragment } from 'react';
 import {
   Search, CheckCircle2, XCircle, Pencil,
   Trash2, RefreshCw, AlertCircle, DollarSign, Clock,
   ChevronUp, ChevronDown, Briefcase, CalendarDays, Gift,
   ChevronLeft, ChevronRight, Power, PowerOff,
-  List, Calendar,
+  List, Calendar, Building2, CalendarClock, FastForward,
 } from 'lucide-react';
 import { useCobros } from '../hooks/useCobros';
 import { useCarteras } from '../hooks/useCarteras';
@@ -33,34 +32,55 @@ import {
   esPagoAnticipado,
   tieneAdelantoRecibido,
 } from '../components/carteras/AdelantoIndicators';
+import { agruparCobrosPorDiaYEmpresa, getEstadoVisualCobro, type EstadoTotalGrupo } from '../utils/cobrosAgrupados';
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
+const CLASES_TOTAL_GRUPO: Record<EstadoTotalGrupo, string> = {
+  pagado: 'bg-emerald-500 text-white shadow-emerald-200/50',
+  vencido: 'bg-rose-500 text-white shadow-rose-200/50',
+  'al-dia': 'bg-slate-400 text-white shadow-slate-200/50',
+  adelanto: 'bg-sky-500 text-white shadow-sky-200/50',
+};
+
 function formatCOP(v: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
 }
-function formatDate(ts: any) {
-  if (!ts?.toDate) return '—';
-  return ts.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
-}
-function formatDateFull(ts: any) {
-  if (!ts?.toDate) return '—';
-  return ts.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+function parseTimestamp(ts: unknown): Date | null {
+  if (!ts) return null;
+  try {
+    if (ts instanceof Date) return ts;
+    const t = ts as { toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof t.toDate === 'function') return t.toDate();
+    if (typeof t.seconds === 'number') return new Date(t.seconds * 1000);
+    if (typeof t._seconds === 'number') return new Date(t._seconds * 1000);
+  } catch {
+    return null;
+  }
+  return null;
 }
 
-type EstadoVisualCobro = 'pagado' | 'al-dia' | 'vencido';
+function formatFechaHora(ts: unknown): { fecha: string; hora: string } | null {
+  const d = parseTimestamp(ts);
+  if (!d || Number.isNaN(d.getTime())) return null;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return { fecha: `${dd}/${mm}/${yyyy}`, hora: `${hh}:${min}` };
+}
 
-function getEstadoVisualCobro(cobro: CobroMensual): EstadoVisualCobro {
-  if (cobro.estado === 'Pagado') return 'pagado';
-  if (cobro.estado === 'Mora') return 'vencido';
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const venc = cobro.fechaVencimiento?.toDate?.();
-  if (!venc) return 'al-dia';
-  venc.setHours(0, 0, 0, 0);
-  if (venc.getTime() <= hoy.getTime()) return 'vencido';
-  return 'al-dia';
+function CeldaFechaHora({ ts }: { ts: unknown }) {
+  const fmt = formatFechaHora(ts);
+  if (!fmt) return <span className="text-slate-400">—</span>;
+  return (
+    <div className="flex flex-col leading-tight whitespace-nowrap">
+      <span className="text-slate-700 font-medium text-xs tabular-nums">{fmt.fecha}</span>
+      <span className="text-slate-400 text-[10px] tabular-nums">{fmt.hora}</span>
+    </div>
+  );
 }
 
 function clasesFilaCobro(cobro: CobroMensual, vistaUnificada: boolean): string {
@@ -99,12 +119,15 @@ function DiasLabel({ ts, pagado }: { ts: any; pagado: boolean }) {
 
 // ─── Fila de cobro ────────────────────────────────────────────────────────────
 function CobroRow({
-  cobro, cartera, clienteInfo, onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
+  cobro, cartera, onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
   vistaUnificada = false,
+  empresaGrupo,
+  empresaRowSpan,
+  empresaTotal,
+  empresaTotalEstado,
 }: {
   cobro: CobroMensual;
   cartera?: Cartera;
-  clienteInfo?: Cliente;
   onPago: (cobro: CobroMensual, pagado: boolean) => void;
   onCortesia: (cobro: CobroMensual) => void;
   onEdit: (c: Cartera) => void;
@@ -113,6 +136,10 @@ function CobroRow({
   onToggleActiva: (c: Cartera) => void;
   loadingId: string | null;
   vistaUnificada?: boolean;
+  empresaGrupo?: string;
+  empresaRowSpan?: number;
+  empresaTotal?: number;
+  empresaTotalEstado?: EstadoTotalGrupo;
 }) {
   const isPagado  = cobro.estado === 'Pagado';
   const isMora    = cobro.estado === 'Mora';
@@ -133,6 +160,33 @@ function CobroRow({
 
   return (
     <tr className={clasesFilaCobro(cobro, vistaUnificada)}>
+      {empresaGrupo && empresaRowSpan && (
+        <td
+          rowSpan={empresaRowSpan}
+          className={`align-top bg-slate-50/60 border-r border-slate-100 w-[7rem] min-w-[7rem] max-w-[8rem] ${
+            empresaRowSpan === 1 ? '!py-1.5 !px-1.5' : '!py-2 !px-2'
+          }`}
+        >
+          <div className={empresaRowSpan === 1 ? 'space-y-1' : 'space-y-1.5 sticky top-0'}>
+            <div className="flex items-start gap-1 min-w-0">
+              <Building2 size={10} className="text-indigo-400 shrink-0 mt-0.5" />
+              <p
+                className="text-[10px] font-semibold text-slate-600 leading-tight break-words line-clamp-2"
+                title={empresaGrupo}
+              >
+                {empresaGrupo}
+              </p>
+            </div>
+            {empresaTotal != null && (
+              <span className={`block w-full text-center rounded px-1 py-0.5 text-[9px] font-bold tabular-nums leading-none ${
+                CLASES_TOTAL_GRUPO[empresaTotalEstado ?? 'al-dia']
+              }`}>
+                {formatCOP(empresaTotal)}
+              </span>
+            )}
+          </div>
+        </td>
+      )}
 
       {/* Día del mes */}
       <td className="w-10 text-center">
@@ -141,21 +195,12 @@ function CobroRow({
         </div>
       </td>
 
-      {/* CARTERA arriba (bold) · Cliente + Empresa abajo (pequeño) */}
+      {/* Cartera */}
       <td className="min-w-[160px]">
         <p className="font-bold leading-tight text-slate-800">
           {cobro.carteraNombre || 'Sin nombre'}
         </p>
-        <Link
-          to={`/clientes/${cobro.clienteId}`}
-          className="inline-flex items-center gap-1 mt-0.5 text-xs text-slate-600 hover:text-indigo-600 transition"
-        >
-          {cobro.clienteNombre || '—'}
-          {clienteInfo?.empresa && (
-            <span className="text-slate-500">· {clienteInfo.empresa}</span>
-          )}
-        </Link>
-        <div className="mt-0.5 flex items-center gap-2">
+        <div className="mt-1 flex items-center gap-2 flex-wrap">
           <DiasLabel ts={cobro.fechaVencimiento} pagado={isPagado} />
           {esPagoAnticipado(cobro) && (
             <BadgePagoAnticipado mesRecibido={etiquetaMesRecibido(cobro)} />
@@ -189,12 +234,10 @@ function CobroRow({
       </td>
 
       {/* Fecha vencimiento */}
-      <td className="text-slate-600">{formatDate(cobro.fechaVencimiento)}</td>
+      <td><CeldaFechaHora ts={cobro.fechaVencimiento} /></td>
 
       {/* Fecha de pago */}
-      <td className="text-slate-600 text-[11px]">
-        {isPagado ? formatDateFull(cobro.fechaPago) : '—'}
-      </td>
+      <td>{isPagado ? <CeldaFechaHora ts={cobro.fechaPago} /> : <span className="text-slate-400">—</span>}</td>
 
       {/* Estado */}
       <td>
@@ -333,11 +376,11 @@ function SectionHeader({ label, count, total, color, collapsed, onToggle }: {
   );
 }
 
-// ─── Tabla de cobros ─────────────────────────────────────────────────────────
-function CobroTable({ cobros, carteras, clientes, onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId, vistaUnificada = false }: {
+// ─── Tabla de cobros agrupada por día y empresa ──────────────────────────────
+type CobroTableProps = {
   cobros: CobroMensual[];
   carteras: Cartera[];
-  clientes: Cliente[];
+  clientesMap: Map<string, Cliente>;
   onPago: (cobro: CobroMensual, pagado: boolean) => void;
   onCortesia: (cobro: CobroMensual) => void;
   onEdit: (c: Cartera) => void;
@@ -346,15 +389,27 @@ function CobroTable({ cobros, carteras, clientes, onPago, onCortesia, onEdit, on
   onToggleActiva: (c: Cartera) => void;
   loadingId: string | null;
   vistaUnificada?: boolean;
-}) {
+};
+
+function CobroTable({
+  cobros, carteras, clientesMap,
+  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
+  vistaUnificada = false,
+}: CobroTableProps) {
+  const bloques = useMemo(
+    () => agruparCobrosPorDiaYEmpresa(cobros, clientesMap),
+    [cobros, clientesMap]
+  );
+
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="data-table">
           <thead>
             <tr className="bg-indigo-600 text-left">
+              <th className="text-white w-28 text-center">Empresa</th>
               <th className="text-white w-10 text-center">Día</th>
-              <th className="text-white">Cartera / Cliente</th>
+              <th className="text-white">Cartera</th>
               <th className="text-white">Valor</th>
               <th className="text-white">Vencimiento</th>
               <th className="text-white">Pagado el</th>
@@ -363,21 +418,32 @@ function CobroTable({ cobros, carteras, clientes, onPago, onCortesia, onEdit, on
             </tr>
           </thead>
           <tbody>
-            {cobros.map((cobro) => (
-              <CobroRow
-                key={cobro.id}
-                cobro={cobro}
-                cartera={carteras.find(c => c.id === cobro.carteraId)}
-                clienteInfo={clientes.find(c => c.id === cobro.clienteId)}
-                onPago={onPago}
-                onCortesia={onCortesia}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onPagoAdelanto={onPagoAdelanto}
-                onToggleActiva={onToggleActiva}
-                loadingId={loadingId}
-                vistaUnificada={vistaUnificada}
-              />
+            {bloques.map(bloque => (
+              <Fragment key={bloque.key}>
+                {bloque.empresas.map(grupoEmp => (
+                  <Fragment key={`${bloque.key}-${grupoEmp.empresa}`}>
+                    {grupoEmp.cobros.map((cobro, idx) => (
+                      <CobroRow
+                        key={cobro.id}
+                        cobro={cobro}
+                        cartera={carteras.find(c => c.id === cobro.carteraId)}
+                        onPago={onPago}
+                        onCortesia={onCortesia}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        onPagoAdelanto={onPagoAdelanto}
+                        onToggleActiva={onToggleActiva}
+                        loadingId={loadingId}
+                        vistaUnificada={vistaUnificada}
+                        empresaGrupo={idx === 0 ? grupoEmp.empresa : undefined}
+                        empresaRowSpan={idx === 0 ? grupoEmp.cobros.length : undefined}
+                        empresaTotal={idx === 0 ? grupoEmp.total : undefined}
+                        empresaTotalEstado={idx === 0 ? grupoEmp.estadoTotal : undefined}
+                      />
+                    ))}
+                  </Fragment>
+                ))}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -448,6 +514,12 @@ export default function Carteras() {
     return map;
   }, [carteras]);
 
+  const clientesMap = useMemo(() => {
+    const map = new Map<string, Cliente>();
+    for (const c of clientes) map.set(c.id, c);
+    return map;
+  }, [clientes]);
+
   const cobrosDelMes = useMemo(() => {
     if (!usaProyeccionDinamica) return cobros;
     return combinarCobrosConVirtuales(cobros, carteras, mesSel, anioSel);
@@ -459,14 +531,15 @@ export default function Carteras() {
       .filter(c => cobroVisibleEnMes(c, carterasMap.get(c.carteraId), mesPasado))
       .filter(c => {
         if (!search.trim()) return true;
-        return [c.clienteNombre, c.carteraNombre].join(' ').toLowerCase().includes(search.toLowerCase());
+        const empresa = clientesMap.get(c.clienteId)?.empresa || '';
+        return [c.clienteNombre, c.carteraNombre, empresa].join(' ').toLowerCase().includes(search.toLowerCase());
       })
       .sort((a, b) => {
         const da = a.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
         const db = b.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
         return da - db;
       });
-  }, [cobrosDelMes, search, carterasMap, mesPasado]);
+  }, [cobrosDelMes, search, carterasMap, clientesMap, mesPasado]);
 
   const pendientes = useMemo(() => cobrosOrdenados.filter(c => c.estado !== 'Pagado'), [cobrosOrdenados]);
   const pagados    = useMemo(() => cobrosOrdenados.filter(c => c.estado === 'Pagado'), [cobrosOrdenados]);
@@ -478,6 +551,14 @@ export default function Carteras() {
     () => pagados.filter(c => esPagoAnticipado(c)),
     [pagados]
   );
+  const pagadosCortesia = useMemo(
+    () => pagados.filter(c => c.esCortesia),
+    [pagados]
+  );
+  const pagadosConAdelanto = useMemo(
+    () => pagadosCaja.filter(c => tieneAdelantoRecibido(c)),
+    [pagadosCaja]
+  );
 
   const totalPend = useMemo(() => pendientes.reduce((s, c) => s + c.valorCobro, 0), [pendientes]);
   const totalPag  = useMemo(() => 
@@ -488,8 +569,20 @@ export default function Carteras() {
     () => pagadosCaja.reduce((s, c) => s + (c.montoAdelantado || 0), 0),
     [pagadosCaja]
   );
-  
+  const totalCortesiaNominal = useMemo(
+    () => pagadosCortesia.reduce((s, c) => s + c.valorCobro, 0),
+    [pagadosCortesia]
+  );
+  const totalAnticipadoNominal = useMemo(
+    () => pagadosAnticipados.reduce((s, c) => s + c.valorCobro, 0),
+    [pagadosAnticipados]
+  );
+
   const totalCaja = totalPag + totalAdelantadoRecibido;
+  const hayMovimientosSinCaja =
+    totalAdelantadoRecibido > 0 ||
+    pagadosCortesia.length > 0 ||
+    pagadosAnticipados.length > 0;
 
   const totalGen  = useMemo(() => cobrosOrdenados.reduce((s, c) => s + c.valorCobro, 0), [cobrosOrdenados]);
 
@@ -596,7 +689,7 @@ export default function Carteras() {
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Cobros</h2>
           <p className="text-slate-500 text-sm mt-0.5">
-            Ordenados por fecha · los primeros son los más urgentes
+            Ordenadas por día de vencimiento, agrupadas por empresa
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 flex-wrap justify-end items-center">
@@ -710,27 +803,16 @@ export default function Carteras() {
         </div>
       )}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* KPIs principales */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-2xl border border-indigo-100 p-4 flex items-center gap-3 shadow-sm">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
             <Clock size={18} className="text-indigo-600" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total {MESES[mesSel-1]}</p>
             <p className="text-lg font-bold text-slate-800">{formatCOP(totalGen)}</p>
             <p className="text-[10px] text-slate-400">{cobrosOrdenados.length} carteras</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-emerald-100 p-4 flex items-center gap-3 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 size={18} className="text-emerald-600" />
-          </div>
-          <div>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Cobrado del mes</p>
-            <p className="text-lg font-bold text-emerald-600">{formatCOP(totalPag)}</p>
-            <p className="text-[10px] text-slate-400">{pagadosCaja.length} pago{pagadosCaja.length !== 1 ? 's' : ''} en caja</p>
           </div>
         </div>
 
@@ -738,10 +820,24 @@ export default function Carteras() {
           <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0">
             <AlertCircle size={18} className="text-rose-600" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Falta cobrar</p>
             <p className="text-lg font-bold text-rose-600">{formatCOP(totalPend)}</p>
             <p className="text-[10px] text-slate-400">{pendientes.length} pendientes</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-emerald-100 p-4 flex items-center gap-3 shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 size={18} className="text-emerald-600" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Recibido en caja</p>
+            <p className="text-lg font-bold text-emerald-600">{formatCOP(totalCaja)}</p>
+            <p className="text-[10px] text-slate-400">
+              {pagadosCaja.length} pago{pagadosCaja.length !== 1 ? 's' : ''}
+              {totalAdelantadoRecibido > 0 && ` · incl. adelantos`}
+            </p>
           </div>
         </div>
 
@@ -749,17 +845,67 @@ export default function Carteras() {
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
             <DollarSign size={18} className="text-white" />
           </div>
-          <div className="text-white">
-            <p className="text-[10px] opacity-80 font-bold uppercase tracking-wider">Caja del mes</p>
-            <p className="text-lg font-bold">{formatCOP(totalCaja)}</p>
-            <p className="text-[10px] opacity-90 font-medium whitespace-nowrap">
-              {totalAdelantadoRecibido > 0
-                ? `Incl. ${formatCOP(totalAdelantadoRecibido)} adelanto`
-                : 'Solo cobros de este mes'}
+          <div className="text-white min-w-0">
+            <p className="text-[10px] opacity-80 font-bold uppercase tracking-wider">Caja disponible</p>
+            <p className="text-lg font-bold">{formatCOP(totalPag)}</p>
+            <p className="text-[10px] opacity-90 font-medium">
+              Ingreso real de {MESES[mesSel-1].toLowerCase()}
             </p>
           </div>
         </div>
       </div>
+
+      {/* KPIs: dinero que no cuenta como disponible */}
+      {hayMovimientosSinCaja && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {totalAdelantadoRecibido > 0 && (
+            <div className="bg-sky-50 rounded-2xl border border-sky-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center flex-shrink-0">
+                <CalendarClock size={18} className="text-sky-700" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] text-sky-700 font-bold uppercase tracking-wider">Adelantos recibidos</p>
+                <p className="text-lg font-bold text-sky-800">{formatCOP(totalAdelantadoRecibido)}</p>
+                <p className="text-[10px] text-sky-600/90">
+                  {pagadosConAdelanto.length} pago{pagadosConAdelanto.length !== 1 ? 's' : ''} · reservado para meses futuros
+                </p>
+              </div>
+            </div>
+          )}
+
+          {pagadosCortesia.length > 0 && (
+            <div className="bg-violet-50 rounded-2xl border border-violet-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
+                <Gift size={18} className="text-violet-700" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] text-violet-700 font-bold uppercase tracking-wider">Cortesías</p>
+                <p className="text-lg font-bold text-violet-800 line-through decoration-violet-400/60">
+                  {formatCOP(totalCortesiaNominal)}
+                </p>
+                <p className="text-[10px] text-violet-600/90">
+                  {pagadosCortesia.length} perdonada{pagadosCortesia.length !== 1 ? 's' : ''} · $0 en caja
+                </p>
+              </div>
+            </div>
+          )}
+
+          {pagadosAnticipados.length > 0 && (
+            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                <FastForward size={18} className="text-slate-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">Pagados antes</p>
+                <p className="text-lg font-bold text-slate-700">{formatCOP(totalAnticipadoNominal)}</p>
+                <p className="text-[10px] text-slate-500">
+                  {pagadosAnticipados.length} cobro{pagadosAnticipados.length !== 1 ? 's' : ''} · sin caja este mes
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
 
       {/* Buscador + tabs de vista */}
@@ -767,7 +913,7 @@ export default function Carteras() {
         <div className="relative">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por cartera o cliente..."
+            placeholder="Buscar por cartera, cliente o empresa..."
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition" />
         </div>
 
@@ -848,7 +994,7 @@ export default function Carteras() {
           <CobroTable
             cobros={cobrosOrdenados}
             carteras={carteras}
-            clientes={clientes}
+            clientesMap={clientesMap}
             onPago={handlePago}
             onCortesia={handleCortesia}
             onEdit={handleEdit}
@@ -868,7 +1014,7 @@ export default function Carteras() {
                 total={formatCOP(totalPend)} color="rose"
                 collapsed={colPend} onToggle={() => setColPend(v => !v)} />
               {!colPend && (
-                <CobroTable cobros={pendientes} carteras={carteras} clientes={clientes}
+                <CobroTable cobros={pendientes} carteras={carteras} clientesMap={clientesMap}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
                   onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
@@ -882,7 +1028,7 @@ export default function Carteras() {
                 total={formatCOP(totalPag + totalAdelantadoRecibido)} color="emerald"
                 collapsed={colPag} onToggle={() => setColPag(v => !v)} />
               {!colPag && (
-                <CobroTable cobros={pagadosCaja} carteras={carteras} clientes={clientes}
+                <CobroTable cobros={pagadosCaja} carteras={carteras} clientesMap={clientesMap}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
                   onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
@@ -895,7 +1041,7 @@ export default function Carteras() {
                 total={formatCOP(0)} color="rose"
                 collapsed={colPag} onToggle={() => setColPag(v => !v)} />
               {!colPag && (
-                <CobroTable cobros={pagadosAnticipados} carteras={carteras} clientes={clientes}
+                <CobroTable cobros={pagadosAnticipados} carteras={carteras} clientesMap={clientesMap}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
                   onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
