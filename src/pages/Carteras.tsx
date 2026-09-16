@@ -41,7 +41,9 @@ const CLASES_TOTAL_GRUPO: Record<EstadoTotalGrupo, string> = {
   pagado: 'bg-emerald-500 text-white shadow-emerald-200/50',
   vencido: 'bg-rose-500 text-white shadow-rose-200/50',
   'al-dia': 'bg-slate-400 text-white shadow-slate-200/50',
-  adelanto: 'bg-sky-500 text-white shadow-sky-200/50',
+  adelanto: 'bg-emerald-500 text-white shadow-emerald-200/50',
+  cortesia: 'bg-violet-500 text-white shadow-violet-200/50 line-through decoration-white/70',
+  'pagado-antes': 'bg-sky-500 text-white shadow-sky-200/50 line-through decoration-white/70',
 };
 
 function formatCOP(v: number) {
@@ -84,9 +86,22 @@ function CeldaFechaHora({ ts }: { ts: unknown }) {
 }
 
 function clasesFilaCobro(cobro: CobroMensual, vistaUnificada: boolean): string {
-  const bordeVerde = esPagoAnticipado(cobro) || tieneAdelantoRecibido(cobro)
+  const extras = clasesFilaAdelanto(cobro);
+  const bordeVerde = esPagoAnticipado(cobro) || tieneAdelantoRecibido(cobro) || cobro.esCortesia
     ? ''
     : 'border-l-4 border-l-emerald-500';
+
+  if (cobro.esCortesia && cobro.estado === 'Pagado') {
+    return `transition group border-b border-violet-300 bg-violet-100/80 ${extras}`;
+  }
+
+  if (esPagoAnticipado(cobro) && cobro.estado === 'Pagado') {
+    return `transition group border-b border-sky-300 bg-sky-100/80 border-l-4 border-l-sky-500`;
+  }
+
+  if (tieneAdelantoRecibido(cobro) && !esPagoAnticipado(cobro) && cobro.estado === 'Pagado') {
+    return `transition group border-b border-emerald-300 bg-emerald-100/80 border-l-4 border-l-emerald-500`;
+  }
 
   if (!vistaUnificada) {
     const isPagado = cobro.estado === 'Pagado';
@@ -97,12 +112,20 @@ function clasesFilaCobro(cobro: CobroMensual, vistaUnificada: boolean): string {
         : isMora
         ? 'bg-rose-100/80 border-l-4 border-l-rose-500 border-rose-300'
         : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'
-    } ${clasesFilaAdelanto(cobro)}`;
+    } ${extras}`;
   }
   const est = getEstadoVisualCobro(cobro);
-  if (est === 'pagado') return `transition group border-b border-emerald-300 bg-emerald-100/80 ${bordeVerde} ${clasesFilaAdelanto(cobro)}`;
+  if (est === 'pagado') {
+    if (esPagoAnticipado(cobro)) {
+      return `transition group border-b border-sky-300 bg-sky-100/80 border-l-4 border-l-sky-500`;
+    }
+    if (tieneAdelantoRecibido(cobro)) {
+      return `transition group border-b border-emerald-300 bg-emerald-100/80 border-l-4 border-l-emerald-500`;
+    }
+    return `transition group border-b border-emerald-300 bg-emerald-100/80 ${bordeVerde} ${extras}`;
+  }
   if (est === 'vencido') return `transition group border-b border-rose-300 bg-rose-100/80 border-l-4 border-l-rose-500`;
-  return `transition group border-b border-slate-200 bg-slate-50 hover:bg-slate-100/70 ${clasesFilaAdelanto(cobro)}`;
+  return `transition group border-b border-slate-200 bg-slate-50 hover:bg-slate-100/70 ${extras}`;
 }
 
 // ─── Etiqueta urgencia ────────────────────────────────────────────────────────
@@ -147,16 +170,22 @@ function CobroRow({
   const estVisual = getEstadoVisualCobro(cobro);
 
   const conAdelanto = tieneAdelantoRecibido(cobro) && !esPagoAnticipado(cobro);
+  const diaClsPagado = cobro.esCortesia
+    ? 'bg-violet-500 text-white'
+    : esPagoAnticipado(cobro)
+    ? 'bg-sky-500 text-white'
+    : 'bg-emerald-500 text-white';
+
   const diaCls = vistaUnificada
     ? estVisual === 'pagado'
-      ? conAdelanto ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'
+      ? diaClsPagado
       : estVisual === 'vencido'
       ? 'bg-rose-500 text-white'
       : 'bg-slate-300 text-slate-800'
     : isMora
     ? 'bg-rose-500 text-white'
     : isPagado
-    ? conAdelanto ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'
+    ? diaClsPagado
     : 'bg-indigo-300 text-indigo-900';
 
   return (
@@ -214,16 +243,22 @@ function CobroRow({
       <td>
         <div className="flex flex-col justify-center">
           {conAdelanto ? (
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <span className="font-bold text-emerald-600">{formatCOP(cobro.valorCobro)}</span>
-              <span className="font-bold text-sky-600">{formatCOP(cobro.montoAdelantado!)}</span>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-[9px] font-bold uppercase text-emerald-700/80">Mes</span>
+                <span className="font-bold text-emerald-600 tabular-nums">{formatCOP(cobro.valorCobro)}</span>
+              </div>
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-[9px] font-bold uppercase text-sky-700/80">Adelanto</span>
+                <span className="font-bold text-sky-700 tabular-nums">{formatCOP(cobro.montoAdelantado!)}</span>
+              </div>
             </div>
           ) : (
             <span className={`font-bold ${
               cobro.esCortesia
-                ? 'text-slate-400 line-through'
+                ? 'text-violet-500 line-through decoration-violet-400/70'
                 : esPagoAnticipado(cobro)
-                ? 'text-slate-400'
+                ? 'text-sky-600 line-through decoration-sky-400/70'
                 : isPagado ? 'text-emerald-600' : isMora ? 'text-rose-600' : 'text-slate-800'
             }`}>
               {formatCOP(cobro.valorCobro)}
@@ -233,7 +268,7 @@ function CobroRow({
             <span className="text-[10px] font-semibold text-sky-700">Sin caja en este mes</span>
           )}
           {cobro.esCortesia && (
-            <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-tighter">Cortesía</span>
+            <span className="text-[10px] font-extrabold text-violet-700 uppercase tracking-tighter">Cortesía</span>
           )}
         </div>
       </td>
@@ -247,9 +282,17 @@ function CobroRow({
       {/* Estado */}
       <td>
         {isPagado ? (
-          esPagoAnticipado(cobro) ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-800 border border-sky-300">
+          cobro.esCortesia ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-violet-100 text-violet-900 border border-violet-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-500" /> Cortesía
+            </span>
+          ) : esPagoAnticipado(cobro) ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-900 border border-sky-300">
               <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Pagado antes
+            </span>
+          ) : conAdelanto ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-900 border border-sky-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Pago con adelanto
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -834,7 +877,15 @@ export default function Carteras() {
               <p className="text-base font-bold text-indigo-700 tabular-nums mt-1">{formatCOP(realmenteACobrar)}</p>
               <p className="text-[10px] text-slate-400 mt-1">{carterasRealmenteACobrar} pagos</p>
               <p className="text-[10px] text-slate-400 tabular-nums leading-snug">
-                {formatCOP(totalGen)} − {formatCOP(totalCortesiaNominal)} − {formatCOP(totalAnticipadoNominal)}
+                {formatCOP(totalGen)}
+                {' − '}
+                <span className={totalCortesiaNominal > 0 ? 'text-violet-700 font-semibold line-through decoration-violet-400/70' : ''}>
+                  {formatCOP(totalCortesiaNominal)}
+                </span>
+                {' − '}
+                <span className={totalAnticipadoNominal > 0 ? 'text-sky-700 font-semibold line-through decoration-sky-400/70' : ''}>
+                  {formatCOP(totalAnticipadoNominal)}
+                </span>
               </p>
             </div>
             <div className="min-w-0 pl-1">
@@ -901,12 +952,12 @@ export default function Carteras() {
             </div>
           </div>
 
-          <div className={`rounded-xl border p-3 ${pagadosAnticipados.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wider ${pagadosAnticipados.length > 0 ? 'text-amber-700' : 'text-slate-500'}`}>Pagados antes</p>
-            <p className={`text-base font-bold tabular-nums mt-1 ${pagadosAnticipados.length > 0 ? 'text-amber-800' : 'text-slate-500'}`}>
+          <div className={`rounded-xl border p-3 ${pagadosAnticipados.length > 0 ? 'bg-sky-50 border-sky-200' : 'bg-slate-50 border-slate-200'}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wider ${pagadosAnticipados.length > 0 ? 'text-sky-700' : 'text-slate-500'}`}>Pagados antes</p>
+            <p className={`text-base font-bold tabular-nums mt-1 ${pagadosAnticipados.length > 0 ? 'text-sky-800 line-through decoration-sky-400/70' : 'text-slate-500'}`}>
               {formatCOP(totalAnticipadoNominal)}
             </p>
-            <p className={`text-[10px] mt-1 ${pagadosAnticipados.length > 0 ? 'text-amber-600/90' : 'text-slate-400'}`}>
+            <p className={`text-[10px] mt-1 ${pagadosAnticipados.length > 0 ? 'text-sky-600/90' : 'text-slate-400'}`}>
               {pagadosAnticipados.length} cobro{pagadosAnticipados.length !== 1 ? 's' : ''} · pagaron en otro mes
             </p>
             <p className="text-[10px] text-slate-400">Sin caja en este mes</p>
@@ -962,7 +1013,16 @@ export default function Carteras() {
                 <span className="w-3.5 h-3.5 rounded bg-rose-300 border border-rose-500" /> Vencido / sin pagar
               </span>
               <span className="inline-flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded bg-violet-300 border border-violet-500" /> Cortesía
+              </span>
+              <span className="inline-flex items-center gap-1.5">
                 <span className="w-3.5 h-3.5 rounded bg-sky-300 border border-sky-500" /> Pagado antes (sin caja)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded bg-emerald-300 border border-emerald-500" />
+                <span className="text-slate-400">+</span>
+                <span className="w-3.5 h-3.5 rounded bg-sky-300 border border-sky-500" />
+                Pago con adelanto (suma caja)
               </span>
             </div>
           )}

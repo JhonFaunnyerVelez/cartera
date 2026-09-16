@@ -28,9 +28,15 @@ export function etiquetaMesRecibido(cobro: CobroMensual): string | null {
   return `${MESES[cobro.mesRecibido - 1]} ${cobro.anioRecibido}`;
 }
 
+export function clasesFilaCortesia(cobro: CobroMensual): string {
+  if (cobro.esCortesia) return 'border-l-4 border-l-violet-500 bg-violet-50/80';
+  return '';
+}
+
 export function clasesFilaAdelanto(cobro: CobroMensual): string {
-  if (esPagoAnticipado(cobro)) return 'border-l-4 border-l-sky-500 bg-sky-100/70';
-  if (tieneAdelantoRecibido(cobro)) return 'border-l-4 border-l-sky-400 bg-sky-50/90';
+  if (cobro.esCortesia) return clasesFilaCortesia(cobro);
+  if (esPagoAnticipado(cobro)) return 'border-l-4 border-l-sky-500 bg-sky-50/80';
+  if (tieneAdelantoRecibido(cobro)) return 'border-l-4 border-l-emerald-500';
   return '';
 }
 
@@ -38,10 +44,10 @@ export function clasesFilaAdelanto(cobro: CobroMensual): string {
 export function BadgePagoAnticipado({ mesRecibido }: { mesRecibido?: string | null }) {
   return (
     <span
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-300 whitespace-nowrap"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-900 border border-sky-300 whitespace-nowrap"
       title="El dinero ya entró a caja en otro mes. Este cobro solo marca el período como pagado."
     >
-      ⏩ Pagado antes{mesRecibido ? ` (${mesRecibido})` : ''} · sin caja
+      ⏩ Pagado antes{mesRecibido ? ` · ${mesRecibido}` : ''}
     </span>
   );
 }
@@ -50,10 +56,10 @@ export function BadgePagoAnticipado({ mesRecibido }: { mesRecibido?: string | nu
 export function BadgeRecibioAdelanto() {
   return (
     <span
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-300 whitespace-nowrap"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-900 border border-sky-300 whitespace-nowrap"
       title="Parte de este pago corresponde a meses futuros y sí suma a la caja de este mes."
     >
-      💰 Recibió adelanto
+      💰 Pago con adelanto
     </span>
   );
 }
@@ -64,7 +70,7 @@ export const BadgePagoAdelantado = BadgePagoAnticipado;
 export function MontoAdelantadoExtra({ monto, alineacion = 'izq' }: { monto: number; alineacion?: 'izq' | 'der' }) {
   return (
     <span
-      className={`text-[10px] font-bold text-sky-800 bg-sky-100 border border-sky-300 px-1.5 py-0.5 rounded mt-0.5 w-fit ${
+      className={`text-[10px] font-bold text-sky-900 bg-sky-100 border border-sky-300 px-1.5 py-0.5 rounded mt-0.5 w-fit ${
         alineacion === 'der' ? 'ml-auto' : ''
       }`}
       title="Dinero recibido HOY por meses futuros — suma a la caja de este mes"
@@ -95,7 +101,7 @@ export function ValorConAdelanto({
   if (esPagoAnticipadoFlag) {
     return (
       <div className={wrapCls}>
-        <span className="font-bold text-slate-400">{formatCOP(valorCobro)}</span>
+        <span className="font-bold text-sky-600 line-through decoration-sky-400/70">{formatCOP(valorCobro)}</span>
         <span className="text-[10px] font-semibold text-sky-700">
           Sin caja{mesRecibido ? ` · pagado en ${mesRecibido}` : ''}
         </span>
@@ -105,11 +111,11 @@ export function ValorConAdelanto({
 
   return (
     <div className={wrapCls}>
-      <span className={`font-bold ${esCortesia ? 'text-slate-400 line-through' : 'text-emerald-600'}`}>
+      <span className={`font-bold ${esCortesia ? 'text-violet-500 line-through decoration-violet-400/70' : 'text-emerald-600'}`}>
         {formatCOP(valorCobro)}
       </span>
       {esCortesia && (
-        <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-tighter">Cortesía</span>
+        <span className="text-[10px] font-extrabold text-violet-700 uppercase tracking-tighter">Cortesía</span>
       )}
       {extra > 0 && <MontoAdelantadoExtra monto={extra} alineacion={alineacion} />}
     </div>

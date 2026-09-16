@@ -3,7 +3,7 @@ import { esPagoAnticipado, tieneAdelantoRecibido } from '../components/carteras/
 
 export type EstadoVisualCobro = 'pagado' | 'al-dia' | 'vencido';
 
-export type EstadoTotalGrupo = 'pagado' | 'vencido' | 'al-dia' | 'adelanto';
+export type EstadoTotalGrupo = 'pagado' | 'vencido' | 'al-dia' | 'adelanto' | 'cortesia' | 'pagado-antes';
 
 export interface GrupoEmpresaCobros {
   empresa: string;
@@ -29,6 +29,8 @@ export function calcularEstadoTotalGrupo(cobros: CobroMensual[]): EstadoTotalGru
   const estados = cobros.map(getEstadoVisualCobro);
   if (estados.some(e => e === 'vencido')) return 'vencido';
   if (estados.every(e => e === 'pagado')) {
+    if (cobros.every(c => c.esCortesia)) return 'cortesia';
+    if (cobros.every(c => esPagoAnticipado(c))) return 'pagado-antes';
     if (cobros.some(c => esPagoAnticipado(c) || tieneAdelantoRecibido(c))) return 'adelanto';
     return 'pagado';
   }
@@ -92,8 +94,8 @@ export function agruparCobrosPorDiaYEmpresa(
 
   for (const bloque of bloques) {
     bloque.empresas.sort((a, b) => {
-      const aPagada = a.estadoTotal === 'pagado' || a.estadoTotal === 'adelanto';
-      const bPagada = b.estadoTotal === 'pagado' || b.estadoTotal === 'adelanto';
+      const aPagada = a.estadoTotal === 'pagado' || a.estadoTotal === 'adelanto' || a.estadoTotal === 'cortesia' || a.estadoTotal === 'pagado-antes';
+      const bPagada = b.estadoTotal === 'pagado' || b.estadoTotal === 'adelanto' || b.estadoTotal === 'cortesia' || b.estadoTotal === 'pagado-antes';
       if (aPagada !== bPagada) return aPagada ? -1 : 1;
       return a.empresa.localeCompare(b.empresa, 'es');
     });
