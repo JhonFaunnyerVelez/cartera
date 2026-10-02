@@ -193,10 +193,8 @@ function CobroRow({
     ? diaClsPagado
     : 'bg-indigo-300 text-indigo-900';
 
-  const baseCobro = cobro.valorCobro;
   const infoAliado = resumenParticipacion(cliente, aliados);
-  const montoParticipacion = infoAliado ? calcularParticipacion(baseCobro, infoAliado.porcentaje) : 0;
-  const recibo = baseCobro - montoParticipacion;
+  const montoParticipacion = infoAliado ? calcularParticipacion(cobro.valorCobro, infoAliado.porcentaje) : 0;
 
   return (
     <tr className={clasesFilaCobro(cobro, vistaUnificada)}>
@@ -253,14 +251,14 @@ function CobroRow({
       <td>
         <div className="flex flex-col justify-center">
           {conAdelanto ? (
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-baseline gap-1.5 flex-wrap">
-                <span className="text-[9px] font-bold uppercase text-emerald-700/80">Mes</span>
-                <span className="font-bold text-emerald-600 tabular-nums">{formatCOP(cobro.valorCobro)}</span>
+            <div className="flex flex-col gap-1">
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wide text-emerald-700/80 leading-none">Mes</p>
+                <p className="font-bold text-emerald-600 tabular-nums leading-tight">{formatCOP(cobro.valorCobro)}</p>
               </div>
-              <div className="flex items-baseline gap-1.5 flex-wrap">
-                <span className="text-[9px] font-bold uppercase text-sky-700/80">Adelanto</span>
-                <span className="font-bold text-sky-700 tabular-nums">{formatCOP(cobro.montoAdelantado!)}</span>
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wide text-sky-700/80 leading-none">Adelanto</p>
+                <p className="font-bold text-sky-700 tabular-nums leading-tight">{formatCOP(cobro.montoAdelantado!)}</p>
               </div>
             </div>
           ) : (
@@ -298,17 +296,10 @@ function CobroRow({
         {infoAliado ? (
           <div className="leading-tight">
             <p className="text-xs font-bold text-sky-800 tabular-nums">{formatCOP(montoParticipacion)}</p>
-            <p className="text-[10px] text-sky-600">{infoAliado.porcentaje}%</p>
+            <p className="text-[10px] text-sky-600">{infoAliado.porcentaje}% de este mes · se paga después</p>
           </div>
         ) : (
           <span className="text-slate-300 text-xs">—</span>
-        )}
-      </td>
-
-      <td className="whitespace-nowrap">
-        <p className="text-xs font-bold text-emerald-700 tabular-nums">{formatCOP(recibo)}</p>
-        {infoAliado && (
-          <p className="text-[10px] text-slate-400 tabular-nums">total − participación</p>
         )}
       </td>
 
@@ -494,7 +485,6 @@ function CobroTable({
               <th className="text-white">Valor</th>
               <th className="text-white">Aliado</th>
               <th className="text-white">Participación</th>
-              <th className="text-white">Recibo</th>
               <th className="text-white">Vencimiento</th>
               <th className="text-white">Pagado el</th>
               <th className="text-white">Estado</th>
@@ -666,6 +656,14 @@ export default function Carteras() {
     [pagadosAnticipados]
   );
   const totalCaja = totalPag + totalAdelantadoRecibido;
+  const comisionDentroDeCaja = useMemo(() => {
+    const ids = new Set(pagadosCaja.map(c => c.id));
+    return liquidaciones.reduce((s, l) => {
+      if (!ids.has(l.cobroId) || l.mesCobro !== mesSel || l.anioCobro !== anioSel) return s;
+      return s + l.montoParticipacion;
+    }, 0);
+  }, [pagadosCaja, liquidaciones, mesSel, anioSel]);
+  const cajaSinAliados = Math.max(0, totalCaja - comisionDentroDeCaja);
 
   const totalGen  = useMemo(() => cobrosOrdenados.reduce((s, c) => s + c.valorCobro, 0), [cobrosOrdenados]);
   /** Dinero que sí puede entrar a caja este mes (sin cortesías ni pagados en otro mes). */
@@ -960,7 +958,7 @@ export default function Carteras() {
 
       {/* KPIs principales */}
       <div className="space-y-2">
-        <div className="grid grid-cols-1 lg:grid-cols-[1.45fr_0.88fr_0.82fr] gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1.15fr_0.8fr] gap-2">
           <div className="bg-white rounded-xl border border-indigo-100 p-3 shadow-sm grid grid-cols-[0.85fr_1.15fr_0.75fr] divide-x divide-indigo-100 gap-2 items-start">
             <div className="min-w-0 pr-1">
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">Lo que va a cobrar</p>
@@ -1002,12 +1000,21 @@ export default function Carteras() {
               <p className="text-base font-bold text-emerald-600 tabular-nums mt-1">{formatCOP(totalPag)}</p>
               <p className="text-[10px] text-slate-400 mt-1">{pagadosCaja.length} pagos</p>
             </div>
-            <div className="min-w-0 pl-2">
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">En caja</p>
-              <p className="text-base font-bold text-sky-700 tabular-nums mt-1">{formatCOP(totalCaja)}</p>
-              <p className="text-[10px] text-slate-400 mt-1 tabular-nums leading-snug">
-                {formatCOP(totalPag)} + {formatCOP(totalAdelantadoRecibido)}
-              </p>
+            <div className="min-w-0 pl-2 space-y-2">
+              <div>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">En caja</p>
+                <p className="text-base font-bold text-sky-700 tabular-nums mt-1">{formatCOP(totalCaja)}</p>
+                <p className="text-[10px] text-slate-400 mt-1 tabular-nums leading-snug">
+                  {formatCOP(totalPag)} + {formatCOP(totalAdelantadoRecibido)}
+                </p>
+              </div>
+              <div className="border-t border-emerald-100 pt-2">
+                <p className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider leading-tight">En caja − aliados</p>
+                <p className="text-base font-bold text-emerald-700 tabular-nums mt-1">{formatCOP(cajaSinAliados)}</p>
+                <p className="text-[10px] text-slate-400 mt-1 tabular-nums leading-snug">
+                  {formatCOP(totalCaja)} − {formatCOP(comisionDentroDeCaja)} · solo este mes
+                </p>
+              </div>
             </div>
           </div>
 

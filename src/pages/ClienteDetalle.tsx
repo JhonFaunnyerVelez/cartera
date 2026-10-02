@@ -313,7 +313,6 @@ export default function ClienteDetalle() {
                   <th className="text-slate-500">Valor mensual</th>
                   <th className="text-slate-500">Aliado</th>
                   <th className="text-slate-500">Participación</th>
-                  <th className="text-slate-500">Recibo</th>
                   <th className="text-slate-500">Día de pago</th>
                   <th className="text-slate-500">Estado</th>
                   <th className="text-slate-500">Acciones</th>
@@ -351,16 +350,9 @@ export default function ClienteDetalle() {
                           return (
                             <div className="leading-tight">
                               <p className="text-xs font-bold text-sky-800 tabular-nums">{formatCOP(monto)}</p>
-                              <p className="text-[10px] text-sky-600">{info.porcentaje}%</p>
+                              <p className="text-[10px] text-sky-600">{info.porcentaje}% · se paga después</p>
                             </div>
                           );
-                        })()}
-                      </td>
-                      <td className="font-bold text-emerald-700 text-xs tabular-nums">
-                        {(() => {
-                          const info = resumenParticipacion(cliente, aliados);
-                          const participacion = info ? calcularParticipacion(cartera.valorCartera, info.porcentaje) : 0;
-                          return formatCOP(cartera.valorCartera - participacion);
                         })()}
                       </td>
                       <td className="text-slate-600">{diaPagoMensual(cartera.fechaVencimientoMensual)}</td>
