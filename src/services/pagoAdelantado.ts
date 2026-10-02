@@ -10,6 +10,7 @@ import {
 import { db } from '../firebase/config';
 import type { Cartera } from '../types';
 import { esCarteraActiva } from '../utils/activo';
+import { crearLiquidacionPorPago } from './participacionAliado';
 
 function sumarMeses(mes: number, anio: number, n: number): { mes: number; anio: number } {
   let m = mes + n;
@@ -94,8 +95,10 @@ export async function registrarPagoAdelantado(
     cobrosAdelantadosIds: futurosIds,
   };
 
+  let cobroIdActual = '';
   if (snapActual.empty) {
     const refActual = doc(collection(db, 'cobros_mensuales'));
+    cobroIdActual = refActual.id;
     batch.set(refActual, {
       carteraId: cartera.id,
       carteraNombre: cartera.nombre || '',
@@ -109,6 +112,7 @@ export async function registrarPagoAdelantado(
     });
   } else {
     const refActual = snapActual.docs[0].ref;
+    cobroIdActual = refActual.id;
     batch.update(refActual, dataActualBase);
   }
   periodos.push(`${MESES[mesInicio - 1]} ${anioInicio}`);
@@ -142,6 +146,26 @@ export async function registrarPagoAdelantado(
   }
 
   await batch.commit();
+
+  const mesesAliado = [
+    { id: cobroIdActual, mes: mesInicio, anio: anioInicio },
+    ...operacionesFuturas.map(op => ({ id: op.ref.id, mes: op.mes, anio: op.anio })),
+  ];
+  for (const periodo of mesesAliado) {
+    if (!periodo.id) continue;
+    await crearLiquidacionPorPago({
+      id: periodo.id,
+      carteraId: cartera.id,
+      carteraNombre: cartera.nombre,
+      clienteId: cartera.clienteId,
+      clienteNombre: cartera.clienteNombre,
+      mes: periodo.mes,
+      anio: periodo.anio,
+      valorCobro: cartera.valorCartera,
+      estado: 'Pagado',
+      fechaPago: Timestamp.fromDate(fechaPago),
+    }, cartera.valorCartera, { facturarEnMesCobro: true });
+  }
 
   return {
     mesesPagados: cantidadMeses,

@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { CobroMensual } from '../types';
+import { anularLiquidacionesDeCobro, crearLiquidacionPorPago } from '../services/participacionAliado';
 
 /**
  * Ajusta dinámicamente la fecha de vencimiento para cobros antiguos que hayan sido
@@ -67,6 +68,7 @@ export function useCobros(mes: number, anio: number) {
       ...(cobro.fechaVencimiento ? { fechaVencimiento: cobro.fechaVencimiento } : {}),
       esCortesia: false,
     });
+    await crearLiquidacionPorPago(cobro, cobro.valorCobro);
   };
 
   /**
@@ -103,6 +105,10 @@ export function useCobros(mes: number, anio: number) {
     }
 
     await batch.commit();
+    await anularLiquidacionesDeCobro(cobro.id);
+    for (const idFuturo of cobro.cobrosAdelantadosIds || []) {
+      await anularLiquidacionesDeCobro(idFuturo);
+    }
   };
 
   const registrarCortesia = async (cobro: CobroMensual) => {

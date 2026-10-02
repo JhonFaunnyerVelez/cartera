@@ -9,6 +9,7 @@ const staticTitles: Record<string, string> = {
   '/dashboard-general': 'Dashboard General',
   '/clientes': 'Gestión de Clientes',
   '/carteras': 'Cobros del Mes',
+  '/aliados': 'Aliados',
   '/recaudos': 'Recaudos',
   '/admin/inversiones': 'Administración — Inversiones',
 };
@@ -26,6 +27,8 @@ export default function Topbar() {
     const inv = inversiones.find(i => i.slug === slug);
     title = inv?.nombre || 'Inversión';
   }
+
+  if (!title && pathname.startsWith('/aliados/')) title = 'Detalle del aliado';
 
   if (!title) {
     title = pathname.startsWith('/clientes/') ? 'Detalle del Cliente' : 'CartéraApp';

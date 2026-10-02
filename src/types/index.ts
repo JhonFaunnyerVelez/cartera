@@ -11,6 +11,10 @@ export interface Cliente {
   fechaCreacion: Timestamp;
   activo?: boolean;
   fechaInactivacion?: Timestamp | null;
+  /** Aliado que participa de los cobros de esta empresa. */
+  aliadoId?: string | null;
+  /** Porcentaje del pago de cartera que corresponde al aliado (0–100). */
+  porcentajeParticipacion?: number | null;
 }
 
 // ─── CARTERAS ─────────────────────────────────────────────────────────────────
@@ -194,6 +198,55 @@ export interface MovimientoInversion {
   fecha: Timestamp;
   notas?: string;
   fechaCreacion: Timestamp;
+}
+
+// ─── ALIADOS ──────────────────────────────────────────────────────────────────
+export type TipoCuentaAliado = 'Ahorros' | 'Corriente';
+
+export interface Aliado {
+  id: string;
+  nombre: string;
+  codigo: string;
+  bancoNombre: string;
+  tipoCuenta: TipoCuentaAliado;
+  numeroCuenta: string;
+  titular: string;
+  activo?: boolean;
+  fechaCreacion: Timestamp;
+}
+
+export type EstadoLiquidacionAliado = 'Pendiente' | 'Pagado';
+
+/** Parte del cobro que se transfiere al banco del aliado en los primeros 5 días del mes siguiente. */
+export interface LiquidacionAliado {
+  id: string;
+  aliadoId: string;
+  aliadoNombre: string;
+  aliadoCodigo: string;
+  bancoNombre: string;
+  tipoCuenta: string;
+  numeroCuenta: string;
+  titular: string;
+  clienteId: string;
+  clienteNombre?: string;
+  empresa?: string;
+  carteraId: string;
+  carteraNombre?: string;
+  cobroId: string;
+  mesCobro: number;
+  anioCobro: number;
+  /** Mes en que el cliente pagó y se facturó al aliado. */
+  mesFacturado?: number;
+  anioFacturado?: number;
+  montoRecibido: number;
+  porcentaje: number;
+  montoParticipacion: number;
+  mesPago: number;
+  anioPago: number;
+  fechaLimite: Timestamp;
+  estado: EstadoLiquidacionAliado;
+  fechaCreacion: Timestamp;
+  fechaPago: Timestamp | null;
 }
 
 export interface ResumenInversionMensual {

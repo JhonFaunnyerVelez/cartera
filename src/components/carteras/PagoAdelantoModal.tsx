@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { CalendarDays, Loader2, CheckCircle2 } from 'lucide-react';
 import { registrarPagoAdelantado } from '../../services/pagoAdelantado';
+import { useClientes } from '../../hooks/useClientes';
+import { useAliados } from '../../hooks/useAliados';
 import type { Cartera } from '../../types';
+import { calcularParticipacion } from '../../utils/participacionAliado';
 
 function formatCOP(v: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
@@ -19,8 +22,14 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, onCl
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<string[] | null>(null);
   const [error, setError] = useState('');
+  const { clientes } = useClientes();
+  const { aliados } = useAliados();
 
   const totalAPagar = cartera.valorCartera * meses;
+  const cliente = clientes.find(c => c.id === cartera.clienteId);
+  const aliado = aliados.find(a => a.id === cliente?.aliadoId);
+  const porcentaje = cliente?.porcentajeParticipacion || 0;
+  const comisionMes = aliado && porcentaje > 0 ? calcularParticipacion(cartera.valorCartera, porcentaje) : 0;
 
   const handleConfirm = async () => {
     setLoading(true);
@@ -112,6 +121,13 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, onCl
               <span className="font-semibold text-slate-700">Total a registrar</span>
               <span className="font-bold text-emerald-600 text-lg">{formatCOP(totalAPagar)}</span>
             </div>
+            {comisionMes > 0 && aliado && (
+              <div className="border-t border-sky-200 pt-2 text-xs text-sky-800 space-y-0.5">
+                <p className="font-semibold">{aliado.codigo} · {aliado.nombre} · {porcentaje}%</p>
+                <p>Comisión de cada mes: {formatCOP(comisionMes)}. No se acumula el adelanto.</p>
+                <p>Queda facturada en cada mes adelantado y se paga del 1 al 5 del mes siguiente.</p>
+              </div>
+            )}
           </div>
 
           {error && (

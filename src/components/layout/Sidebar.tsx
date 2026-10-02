@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, Briefcase, LogOut, ChevronRight,
+  LayoutDashboard, Users, Briefcase, LogOut, ChevronRight, Handshake,
   TrendingUp, PanelLeftClose, PanelLeftOpen, X, PieChart, Settings,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -26,6 +26,7 @@ const staticBlocks: MenuBlock[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
       { to: '/clientes', label: 'Clientes', icon: Users },
       { to: '/carteras', label: 'Carteras', icon: Briefcase },
+      { to: '/aliados', label: 'Aliados', icon: Handshake },
       { to: '/recaudos', label: 'Recaudos', icon: TrendingUp },
     ],
   },

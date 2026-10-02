@@ -7,6 +7,8 @@ import Clientes from './pages/Clientes';
 import ClienteDetalle from './pages/ClienteDetalle';
 import Carteras from './pages/Carteras';
 import Recaudos from './pages/Recaudos';
+import Aliados from './pages/Aliados';
+import AliadoDetalle from './pages/AliadoDetalle';
 import InversionPage from './pages/InversionPage';
 import AdminInversiones from './pages/AdminInversiones';
 import DashboardGeneral from './pages/DashboardGeneral';
@@ -37,6 +39,8 @@ function AppRoutes() {
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/clientes/:id" element={<ClienteDetalle />} />
         <Route path="/carteras" element={<Carteras />} />
+        <Route path="/aliados" element={<Aliados />} />
+        <Route path="/aliados/:id" element={<AliadoDetalle />} />
         <Route path="/recaudos" element={<Recaudos />} />
         <Route path="/inversiones/:slug" element={<InversionPage />} />
         <Route path="/admin/inversiones" element={<AdminInversiones />} />

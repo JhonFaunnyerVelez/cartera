@@ -9,8 +9,11 @@ import {
 import { useCobros } from '../hooks/useCobros';
 import { useCarteras } from '../hooks/useCarteras';
 import { useClientes } from '../hooks/useClientes';
+import { useAliados } from '../hooks/useAliados';
+import { useLiquidacionesAliado } from '../hooks/useLiquidacionesAliado';
+import { calcularParticipacion, resumenParticipacion } from '../utils/participacionAliado';
 import { generarCobrosParaMes } from '../services/cierreMensual';
-import type { CobroMensual, Cartera, Cliente } from '../types';
+import type { Aliado, CobroMensual, Cartera, Cliente } from '../types';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import CarteraForm from '../components/carteras/CarteraForm';
@@ -142,7 +145,7 @@ function DiasLabel({ ts, pagado }: { ts: any; pagado: boolean }) {
 
 // ─── Fila de cobro ────────────────────────────────────────────────────────────
 function CobroRow({
-  cobro, cartera, onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
+  cobro, cartera, cliente, aliados = [], onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
   vistaUnificada = false,
   empresaGrupo,
   empresaRowSpan,
@@ -151,6 +154,8 @@ function CobroRow({
 }: {
   cobro: CobroMensual;
   cartera?: Cartera;
+  cliente?: Cliente;
+  aliados?: Aliado[];
   onPago: (cobro: CobroMensual, pagado: boolean) => void;
   onCortesia: (cobro: CobroMensual) => void;
   onEdit: (c: Cartera) => void;
@@ -187,6 +192,11 @@ function CobroRow({
     : isPagado
     ? diaClsPagado
     : 'bg-indigo-300 text-indigo-900';
+
+  const baseCobro = cobro.valorCobro;
+  const infoAliado = resumenParticipacion(cliente, aliados);
+  const montoParticipacion = infoAliado ? calcularParticipacion(baseCobro, infoAliado.porcentaje) : 0;
+  const recibo = baseCobro - montoParticipacion;
 
   return (
     <tr className={clasesFilaCobro(cobro, vistaUnificada)}>
@@ -271,6 +281,35 @@ function CobroRow({
             <span className="text-[10px] font-extrabold text-violet-700 uppercase tracking-tighter">Cortesía</span>
           )}
         </div>
+      </td>
+
+      <td className="whitespace-nowrap">
+        {infoAliado ? (
+          <div className="leading-tight" title={infoAliado.banco}>
+            <p className="text-xs font-bold text-sky-800">{infoAliado.aliadoCodigo}</p>
+            <p className="text-[10px] text-sky-700">{infoAliado.aliadoNombre}</p>
+          </div>
+        ) : (
+          <span className="text-slate-300 text-xs">—</span>
+        )}
+      </td>
+
+      <td className="whitespace-nowrap">
+        {infoAliado ? (
+          <div className="leading-tight">
+            <p className="text-xs font-bold text-sky-800 tabular-nums">{formatCOP(montoParticipacion)}</p>
+            <p className="text-[10px] text-sky-600">{infoAliado.porcentaje}%</p>
+          </div>
+        ) : (
+          <span className="text-slate-300 text-xs">—</span>
+        )}
+      </td>
+
+      <td className="whitespace-nowrap">
+        <p className="text-xs font-bold text-emerald-700 tabular-nums">{formatCOP(recibo)}</p>
+        {infoAliado && (
+          <p className="text-[10px] text-slate-400 tabular-nums">total − participación</p>
+        )}
       </td>
 
       {/* Fecha vencimiento */}
@@ -422,6 +461,7 @@ type CobroTableProps = {
   cobros: CobroMensual[];
   carteras: Cartera[];
   clientesMap: Map<string, Cliente>;
+  aliados: Aliado[];
   onPago: (cobro: CobroMensual, pagado: boolean) => void;
   onCortesia: (cobro: CobroMensual) => void;
   onEdit: (c: Cartera) => void;
@@ -433,7 +473,7 @@ type CobroTableProps = {
 };
 
 function CobroTable({
-  cobros, carteras, clientesMap,
+  cobros, carteras, clientesMap, aliados,
   onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
   vistaUnificada = false,
 }: CobroTableProps) {
@@ -452,6 +492,9 @@ function CobroTable({
               <th className="text-white w-10 text-center">Día</th>
               <th className="text-white">Cartera</th>
               <th className="text-white">Valor</th>
+              <th className="text-white">Aliado</th>
+              <th className="text-white">Participación</th>
+              <th className="text-white">Recibo</th>
               <th className="text-white">Vencimiento</th>
               <th className="text-white">Pagado el</th>
               <th className="text-white">Estado</th>
@@ -468,6 +511,8 @@ function CobroTable({
                         key={cobro.id}
                         cobro={cobro}
                         cartera={carteras.find(c => c.id === cobro.carteraId)}
+                        cliente={clientesMap.get(cobro.clienteId)}
+                        aliados={aliados}
                         onPago={onPago}
                         onCortesia={onCortesia}
                         onEdit={onEdit}
@@ -519,6 +564,8 @@ export default function Carteras() {
   const { cobros, loading: lCobros, registrarPago, registrarCortesia, revertirPago } = useCobros(mesSel, anioSel);
   const { carteras, loading: lCarteras, deleteCartera, setCarteraActiva } = useCarteras();
   const { clientes, loading: lClientes } = useClientes();
+  const { aliados } = useAliados();
+  const { liquidaciones } = useLiquidacionesAliado();
 
   const mesPasado = esMesPasado(mesSel, anioSel);
   const usaProyeccionDinamica = esMesActual || esMesFuturo;
@@ -636,6 +683,54 @@ export default function Carteras() {
   const pctRecaudoReal = realmenteACobrar > 0
     ? Math.round((totalPag / realmenteACobrar) * 100)
     : 0;
+
+  const participacionAliados = useMemo(() => {
+    const porAliado = new Map<string, { codigo: string; nombre: string; total: number; cantidad: number }>();
+    let total = 0;
+    let cantidad = 0;
+    for (const cobro of cobrosOrdenados) {
+      if (cobro.esCortesia || esPagoAnticipado(cobro)) continue;
+      const cliente = clientesMap.get(cobro.clienteId);
+      const info = resumenParticipacion(cliente, aliados);
+      if (!info || !cliente?.aliadoId) continue;
+      const base = cobro.valorCobro;
+      const monto = calcularParticipacion(base, info.porcentaje);
+      if (monto <= 0) continue;
+      total += monto;
+      cantidad += 1;
+      const prev = porAliado.get(cliente.aliadoId) ?? {
+        codigo: info.aliadoCodigo,
+        nombre: info.aliadoNombre,
+        total: 0,
+        cantidad: 0,
+      };
+      prev.total += monto;
+      prev.cantidad += 1;
+      porAliado.set(cliente.aliadoId, prev);
+    }
+    return { total, cantidad, detalle: [...porAliado.values()] };
+  }, [cobrosOrdenados, clientesMap, aliados]);
+
+  const facturadoAliados = useMemo(() => {
+    const porAliado = new Map<string, { codigo: string; nombre: string; total: number; cantidad: number }>();
+    let total = 0;
+    let cantidad = 0;
+    for (const l of liquidaciones) {
+      if (l.mesCobro !== mesSel || l.anioCobro !== anioSel) continue;
+      total += l.montoParticipacion;
+      cantidad += 1;
+      const prev = porAliado.get(l.aliadoId) ?? {
+        codigo: l.aliadoCodigo,
+        nombre: l.aliadoNombre,
+        total: 0,
+        cantidad: 0,
+      };
+      prev.total += l.montoParticipacion;
+      prev.cantidad += 1;
+      porAliado.set(l.aliadoId, prev);
+    }
+    return { total, cantidad, detalle: [...porAliado.values()] };
+  }, [liquidaciones, mesSel, anioSel]);
 
   const handlePago = (cobro: CobroMensual, isPagado: boolean) => {
     if (isPagado) {
@@ -928,7 +1023,23 @@ export default function Carteras() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+          <div className="bg-white rounded-xl border border-sky-100 p-3 shadow-sm grid grid-cols-2 divide-x divide-sky-100 gap-2">
+            <div className="min-w-0 pr-1">
+              <p className="text-[10px] text-sky-700 font-bold uppercase tracking-wider leading-tight">A cobrar aliados</p>
+              <p className="text-base font-bold text-sky-800 tabular-nums mt-1">{formatCOP(participacionAliados.total)}</p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {participacionAliados.cantidad} cartera{participacionAliados.cantidad !== 1 ? 's' : ''} · {participacionAliados.detalle.length} aliado{participacionAliados.detalle.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <div className="min-w-0 pl-2">
+              <p className="text-[10px] text-indigo-700 font-bold uppercase tracking-wider leading-tight">Facturado aliados</p>
+              <p className="text-base font-bold text-indigo-800 tabular-nums mt-1">{formatCOP(facturadoAliados.total)}</p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {facturadoAliados.cantidad} pago{facturadoAliados.cantidad !== 1 ? 's' : ''} · {facturadoAliados.detalle.length} aliado{facturadoAliados.detalle.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
           <div className="rounded-xl border border-slate-200 p-3 grid grid-cols-2 divide-x divide-slate-200 gap-3 bg-white shadow-sm">
             <div className="min-w-0 pr-1">
               <p className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${totalAdelantadoRecibido > 0 ? 'text-sky-700' : 'text-slate-500'}`}>Adelantos recibidos</p>
@@ -1062,6 +1173,7 @@ export default function Carteras() {
             cobros={cobrosOrdenados}
             carteras={carteras}
             clientesMap={clientesMap}
+            aliados={aliados}
             onPago={handlePago}
             onCortesia={handleCortesia}
             onEdit={handleEdit}
@@ -1081,7 +1193,7 @@ export default function Carteras() {
                 total={formatCOP(totalPend)} color="rose"
                 collapsed={colPend} onToggle={() => setColPend(v => !v)} />
               {!colPend && (
-                <CobroTable cobros={pendientes} carteras={carteras} clientesMap={clientesMap}
+                <CobroTable cobros={pendientes} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
                   onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
@@ -1095,7 +1207,7 @@ export default function Carteras() {
                 total={formatCOP(totalPag + totalAdelantadoRecibido)} color="emerald"
                 collapsed={colPag} onToggle={() => setColPag(v => !v)} />
               {!colPag && (
-                <CobroTable cobros={pagadosCaja} carteras={carteras} clientesMap={clientesMap}
+                <CobroTable cobros={pagadosCaja} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
                   onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
@@ -1108,7 +1220,7 @@ export default function Carteras() {
                 total={formatCOP(0)} color="rose"
                 collapsed={colPag} onToggle={() => setColPag(v => !v)} />
               {!colPag && (
-                <CobroTable cobros={pagadosAnticipados} carteras={carteras} clientesMap={clientesMap}
+                <CobroTable cobros={pagadosAnticipados} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
                   onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
@@ -1144,6 +1256,7 @@ export default function Carteras() {
         {pagoCobro && (
           <RegistroPagoModal
             cobro={pagoCobro}
+            participacion={resumenParticipacion(clientes.find(c => c.id === pagoCobro.clienteId), aliados)}
             onClose={() => setPagoCobro(null)}
             onConfirm={confirmarPago}
           />

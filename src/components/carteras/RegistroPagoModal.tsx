@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import type { CobroMensual } from '../../types';
+import { calcularParticipacion, etiquetaMes, periodoLiquidacionAliado } from '../../utils/participacionAliado';
+
+export interface ParticipacionPagoPreview {
+  porcentaje: number;
+  aliadoNombre: string;
+  aliadoCodigo: string;
+  banco: string;
+}
 
 function formatCOP(v: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
@@ -8,13 +16,16 @@ function formatCOP(v: number) {
 
 interface Props {
   cobro: CobroMensual;
+  participacion?: ParticipacionPagoPreview | null;
   onClose: () => void;
   onConfirm: (monto: number) => Promise<void>;
 }
 
-export default function RegistroPagoModal({ cobro, onClose, onConfirm }: Props) {
+export default function RegistroPagoModal({ cobro, participacion, onClose, onConfirm }: Props) {
   const valorEsperado = cobro.valorCobro;
+  const periodoAliado = participacion ? periodoLiquidacionAliado() : null;
   const [monto, setMonto] = useState(String(valorEsperado));
+  const montoAliado = participacion ? calcularParticipacion(Number(monto) || 0, participacion.porcentaje) : 0;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -73,6 +84,20 @@ export default function RegistroPagoModal({ cobro, onClose, onConfirm }: Props) 
           Valor del cobro: {formatCOP(valorEsperado)} — puedes bajarlo si paga menos
         </p>
       </div>
+
+      {participacion && participacion.porcentaje > 0 && Number(monto) > 0 && (
+        <div className="text-left text-xs bg-sky-50 border border-sky-200 rounded-xl px-3 py-2.5 space-y-1">
+          <p className="font-semibold text-sky-900">
+            Aliado {participacion.aliadoCodigo} · {participacion.aliadoNombre}
+          </p>
+          <p className="text-sky-800">
+            {participacion.porcentaje}% de este pago = {formatCOP(montoAliado)}
+          </p>
+          <p className="text-sky-700">
+            Va al banco {participacion.banco}. Se paga del 1 al 5 de {periodoAliado ? etiquetaMes(periodoAliado.mes, periodoAliado.anio) : ''}.
+          </p>
+        </div>
+      )}
 
       {Number(monto) > 0 && Number(monto) < valorEsperado && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-left">

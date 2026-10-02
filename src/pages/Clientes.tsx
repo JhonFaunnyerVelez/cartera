@@ -7,6 +7,7 @@ import {
   UserX, UserCheck,
 } from 'lucide-react';
 import { useClientes } from '../hooks/useClientes';
+import { useAliados } from '../hooks/useAliados';
 import { useCarteras } from '../hooks/useCarteras';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
@@ -39,6 +40,7 @@ function SortIcon({ active, dir }: { col: string; active: boolean; dir: SortDir 
 
 export default function Clientes() {
   const { clientes, loading: loadingClientes, deleteCliente, setClienteActivo } = useClientes();
+  const { aliados } = useAliados();
   const { carteras, loading: loadingCarteras } = useCarteras();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
@@ -287,6 +289,12 @@ export default function Clientes() {
                             <div className="flex items-center gap-1.5 text-slate-700 text-xs font-medium">
                               <Building2 size={11} className="text-slate-400" /> {cliente.empresa}
                             </div>
+                          )}
+                          {cliente.aliadoId && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-800 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
+                              {aliados.find(a => a.id === cliente.aliadoId)?.codigo || 'Aliado'}
+                              {cliente.porcentajeParticipacion ? ` · ${cliente.porcentajeParticipacion}%` : ''}
+                            </span>
                           )}
                           <div className="flex items-center gap-2 flex-wrap">
                             {cliente.pais && (

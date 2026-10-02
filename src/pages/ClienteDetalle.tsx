@@ -3,6 +3,8 @@ import { ArrowLeft, Building2, Globe, MapPin, Briefcase, Plus, Calendar, Trendin
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useClientes } from '../hooks/useClientes';
+import { useAliados } from '../hooks/useAliados';
+import { calcularParticipacion, resumenParticipacion } from '../utils/participacionAliado';
 import { useCarteras, diasParaVencer } from '../hooks/useCarteras';
 import { useCobros } from '../hooks/useCobros';
 import Badge from '../components/ui/Badge';
@@ -41,6 +43,7 @@ function diaPagoMensual(ts: any): string {
 export default function ClienteDetalle() {
   const { id } = useParams<{ id: string }>();
   const { clientes, loading: loadingClientes, setClienteActivo } = useClientes();
+  const { aliados } = useAliados();
   const { carteras, loading: loadingCarteras, setCarteraActiva } = useCarteras();
   const hoy = new Date();
   const { cobros, registrarPago, registrarCortesia, revertirPago } = useCobros(hoy.getMonth() + 1, hoy.getFullYear());
@@ -238,6 +241,12 @@ export default function ClienteDetalle() {
                 <Building2 size={14} className="text-slate-400" /> {cliente.empresa}
               </span>
             )}
+            {cliente.aliadoId && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-800 bg-sky-50 border border-sky-200 px-2 py-1 rounded-lg">
+                Aliado {aliados.find(a => a.id === cliente.aliadoId)?.codigo || '—'}
+                {cliente.porcentajeParticipacion ? ` · ${cliente.porcentajeParticipacion}%` : ''}
+              </span>
+            )}
             {cliente.pais && (
               <span className="flex items-center gap-1.5 text-slate-500 text-sm">
                 <Globe size={14} className="text-slate-400" /> {cliente.pais}
@@ -302,6 +311,9 @@ export default function ClienteDetalle() {
                 <tr className="bg-slate-50 border-b border-slate-100 text-left">
                   <th className="text-slate-500">Cartera</th>
                   <th className="text-slate-500">Valor mensual</th>
+                  <th className="text-slate-500">Aliado</th>
+                  <th className="text-slate-500">Participación</th>
+                  <th className="text-slate-500">Recibo</th>
                   <th className="text-slate-500">Día de pago</th>
                   <th className="text-slate-500">Estado</th>
                   <th className="text-slate-500">Acciones</th>
@@ -319,6 +331,38 @@ export default function ClienteDetalle() {
                         )}
                       </td>
                       <td className="font-semibold text-slate-700">{formatCOP(cartera.valorCartera)}</td>
+                      <td>
+                        {(() => {
+                          const info = resumenParticipacion(cliente, aliados);
+                          if (!info) return <span className="text-slate-300 text-xs">—</span>;
+                          return (
+                            <div className="leading-tight">
+                              <p className="text-xs font-bold text-sky-800">{info.aliadoCodigo}</p>
+                              <p className="text-[10px] text-sky-700">{info.aliadoNombre}</p>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td>
+                        {(() => {
+                          const info = resumenParticipacion(cliente, aliados);
+                          if (!info) return <span className="text-slate-300 text-xs">—</span>;
+                          const monto = calcularParticipacion(cartera.valorCartera, info.porcentaje);
+                          return (
+                            <div className="leading-tight">
+                              <p className="text-xs font-bold text-sky-800 tabular-nums">{formatCOP(monto)}</p>
+                              <p className="text-[10px] text-sky-600">{info.porcentaje}%</p>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="font-bold text-emerald-700 text-xs tabular-nums">
+                        {(() => {
+                          const info = resumenParticipacion(cliente, aliados);
+                          const participacion = info ? calcularParticipacion(cartera.valorCartera, info.porcentaje) : 0;
+                          return formatCOP(cartera.valorCartera - participacion);
+                        })()}
+                      </td>
                       <td className="text-slate-600">{diaPagoMensual(cartera.fechaVencimientoMensual)}</td>
                       <td>
                         {(() => {
@@ -497,6 +541,7 @@ export default function ClienteDetalle() {
         {pagoCobro && (
           <RegistroPagoModal
             cobro={pagoCobro}
+            participacion={resumenParticipacion(clientes.find(c => c.id === pagoCobro.clienteId), aliados)}
             onClose={() => setPagoCobro(null)}
             onConfirm={confirmarPago}
           />
