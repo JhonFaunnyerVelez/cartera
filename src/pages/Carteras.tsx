@@ -20,7 +20,7 @@ import CarteraForm from '../components/carteras/CarteraForm';
 import PagoAdelantoModal from '../components/carteras/PagoAdelantoModal';
 import RegistroPagoModal from '../components/carteras/RegistroPagoModal';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { cobroVisibleEnMes, esCarteraActiva } from '../utils/activo';
+import { cobroVisibleEnMes, esCarteraActiva, esClienteActivo } from '../utils/activo';
 import { esMesPasado } from '../utils/periodo';
 import {
   combinarCobrosConVirtuales,
@@ -172,6 +172,8 @@ function CobroRow({
   const isPagado  = cobro.estado === 'Pagado';
   const isMora    = cobro.estado === 'Mora';
   const isLoading = loadingId === cobro.id;
+  if (!cartera || !esCarteraActiva(cartera)) return null;
+  if (cliente && !esClienteActivo(cliente)) return null;
   const estVisual = getEstadoVisualCobro(cobro);
 
   const conAdelanto = tieneAdelantoRecibido(cobro) && !esPagoAnticipado(cobro);
@@ -501,7 +503,7 @@ function CobroTable({
                         key={cobro.id}
                         cobro={cobro}
                         cartera={carteras.find(c => c.id === cobro.carteraId)}
-                        cliente={clientesMap.get(cobro.clienteId)}
+                        cliente={clientesMap.get(carteras.find(c => c.id === cobro.carteraId)?.clienteId || '') ?? clientesMap.get(cobro.clienteId)}
                         aliados={aliados}
                         onPago={onPago}
                         onCortesia={onCortesia}
@@ -600,14 +602,19 @@ export default function Carteras() {
   }, [clientes]);
 
   const cobrosDelMes = useMemo(() => {
-    if (!usaProyeccionDinamica) return cobros;
-    return combinarCobrosConVirtuales(cobros, carteras, mesSel, anioSel);
-  }, [cobros, carteras, mesSel, anioSel, usaProyeccionDinamica]);
+    const carterasVivas = carteras.filter(cartera => {
+      const cliente = clientesMap.get(cartera.clienteId);
+      return !!cliente && esCarteraActiva(cartera) && esClienteActivo(cliente);
+    });
+    const idsVivos = new Set(carterasVivas.map(c => c.id));
+    const reales = cobros.filter(c => idsVivos.has(c.carteraId));
+    return combinarCobrosConVirtuales(reales, carterasVivas, mesSel, anioSel);
+  }, [cobros, carteras, clientesMap, mesSel, anioSel]);
 
   // Ordenar por fecha de vencimiento ASCENDENTE (más urgente primero)
   const cobrosOrdenados = useMemo(() => {
     return [...cobrosDelMes]
-      .filter(c => cobroVisibleEnMes(c, carterasMap.get(c.carteraId), mesPasado))
+      .filter(c => cobroVisibleEnMes(c, carterasMap.get(c.carteraId), clientesMap.get(c.clienteId)))
       .filter(c => {
         if (!search.trim()) return true;
         const empresa = clientesMap.get(c.clienteId)?.empresa || '';
@@ -618,7 +625,7 @@ export default function Carteras() {
         const db = b.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
         return da - db;
       });
-  }, [cobrosDelMes, search, carterasMap, clientesMap, mesPasado]);
+  }, [cobrosDelMes, search, carterasMap, clientesMap]);
 
   const pendientes = useMemo(() => cobrosOrdenados.filter(c => c.estado !== 'Pagado'), [cobrosOrdenados]);
   const pagados    = useMemo(() => cobrosOrdenados.filter(c => c.estado === 'Pagado'), [cobrosOrdenados]);
@@ -812,7 +819,7 @@ export default function Carteras() {
       title: activa ? '¿Desactivar cartera?' : '¿Reactivar cartera?',
       message: activa
         ? `"${cartera.nombre}" dejará de aparecer en cobros futuros. El historial de meses anteriores se conserva.`
-        : `"${cartera.nombre}" volverá a aparecer en los cobros del mes actual y futuros.`,
+        : `"${cartera.nombre}" vuelve a contar desde hoy. Los meses en que estuvo apagada no se cobran.`,
       type: activa ? 'danger' : 'success',
       onConfirm: async () => {
         await setCarteraActiva(cartera.id, !activa);
@@ -911,7 +918,7 @@ export default function Carteras() {
           <div>
             <span className="font-semibold">Mes pasado — </span>
             estás viendo <strong>{MESES[mesSel - 1]} {anioSel}</strong>.
-            Puedes registrar pagos atrasados o generar cobros faltantes en Firestore.
+            Los que no pagaron siguen como deuda. Puedes registrar el pago atrasado.
           </div>
         </div>
       )}

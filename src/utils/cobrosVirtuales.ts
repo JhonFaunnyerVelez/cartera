@@ -2,7 +2,7 @@ import { addDoc, collection, getDocs, query, where, writeBatch } from 'firebase/
 import { db } from '../firebase/config';
 import { calcularFechaVencimientoCobro } from '../services/cierreMensual';
 import type { Cartera, CobroMensual } from '../types';
-import { esCarteraActiva, periodoEsActualOFuturo } from './activo';
+import { esCarteraActiva, periodoEsActualOFuturo, carteraCuentaEnMes } from './activo';
 import { esMesPasado } from './periodo';
 
 export const VIRTUAL_COBO_PREFIX = 'virtual:';
@@ -82,13 +82,14 @@ export async function sincronizarCobrosPendientesCartera(cartera: Cartera): Prom
   if (count > 0) await batch.commit();
 }
 
-/** Completa cobros reales con proyecciones de carteras activas que aún no tienen documento. */
+/** Completa cobros reales con los que faltan. En un mes pasado quedan como deuda. */
 export function combinarCobrosConVirtuales(
   cobrosReales: CobroMensual[],
   carteras: Cartera[],
   mes: number,
   anio: number
 ): CobroMensual[] {
+  const mesPasado = esMesPasado(mes, anio);
   const carterasMap = new Map(carteras.map(c => [c.id, c]));
   const alineados = cobrosReales.map(c =>
     alinearCobroConCartera(c, carterasMap.get(c.carteraId), mes, anio)
@@ -97,9 +98,11 @@ export function combinarCobrosConVirtuales(
   const virtuales: CobroMensual[] = [];
 
   for (const cartera of carteras) {
-    if (!esCarteraActiva(cartera)) continue;
     if (carterasConCobro.has(cartera.id)) continue;
-    virtuales.push(crearCobroVirtual(cartera, mes, anio));
+    if (!esCarteraActiva(cartera)) continue;
+    if (!carteraCuentaEnMes(cartera, mes, anio)) continue;
+    const virtual = crearCobroVirtual(cartera, mes, anio);
+    virtuales.push(mesPasado ? { ...virtual, estado: 'Mora' } : virtual);
   }
 
   return [...alineados, ...virtuales];

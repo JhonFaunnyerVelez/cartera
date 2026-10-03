@@ -33,6 +33,8 @@ export interface Cartera {
   estado: EstadoCartera;
   activa?: boolean;
   fechaInactivacion?: Timestamp | null;
+  /** Desde este día la cartera entra en los cobros. Si se reactiva, cuenta desde esa nueva fecha. */
+  fechaActivacion?: Timestamp | null;
 }
 
 export interface CarteraConCliente extends Cartera {

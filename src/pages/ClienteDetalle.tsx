@@ -180,7 +180,7 @@ export default function ClienteDetalle() {
       title: activa ? '¿Desactivar cartera?' : '¿Reactivar cartera?',
       message: activa
         ? `"${cartera.nombre}" dejará de aparecer en cobros futuros. Los meses anteriores con deuda o pagos se conservan.`
-        : `"${cartera.nombre}" volverá a generar cobros. Se creará el cobro del mes actual si no existe.`,
+        : `"${cartera.nombre}" vuelve a contar desde hoy. Los meses en que estuvo apagada no se cobran.`,
       type: activa ? 'danger' : 'success',
       onConfirm: async () => {
         await setCarteraActiva(cartera.id, !activa);
@@ -314,6 +314,7 @@ export default function ClienteDetalle() {
                   <th className="text-slate-500">Aliado</th>
                   <th className="text-slate-500">Participación</th>
                   <th className="text-slate-500">Día de pago</th>
+                  <th className="text-slate-500">Activación</th>
                   <th className="text-slate-500">Estado</th>
                   <th className="text-slate-500">Acciones</th>
                 </tr>
@@ -356,6 +357,7 @@ export default function ClienteDetalle() {
                         })()}
                       </td>
                       <td className="text-slate-600">{diaPagoMensual(cartera.fechaVencimientoMensual)}</td>
+                      <td className="text-slate-700 text-sm whitespace-nowrap">{formatDate(cartera.fechaActivacion || cartera.fechaCreacion)}</td>
                       <td>
                         {(() => {
                           const cobroMes = cobros.find(c => c.carteraId === cartera.id);

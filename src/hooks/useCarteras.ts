@@ -11,6 +11,7 @@ import {
   orderBy,
   Timestamp,
   getDoc,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Cartera, EstadoCartera } from '../types';
@@ -61,6 +62,21 @@ export function useCarteras() {
         const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Cartera));
         setCarteras(data);
         setLoading(false);
+
+        const faltantes = snapshot.docs.filter(d => {
+          const data = d.data();
+          return data.fechaActivacion == null && data.activa !== false && data.fechaInactivacion == null;
+        });
+        faltantes.forEach(d => {
+          const ref = d.ref;
+          runTransaction(db, async (tx) => {
+            const fresh = await tx.get(ref);
+            const actual = fresh.data();
+            if (!actual || actual.fechaActivacion != null) return;
+            if (actual.activa === false || actual.fechaInactivacion != null) return;
+            tx.update(ref, { fechaActivacion: actual.fechaCreacion || Timestamp.now() });
+          }).catch(err => console.error('Error guardando fecha de activación:', err));
+        });
       },
       (err) => {
         console.error('Error fetching carteras:', err);
@@ -83,6 +99,7 @@ export function useCarteras() {
       estado,
       activa: true,
       fechaCreacion: serverTimestamp(),
+      fechaActivacion: serverTimestamp(),
     });
   };
 
