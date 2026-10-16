@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Timestamp } from 'firebase/firestore';
 import { useCarteras } from '../../hooks/useCarteras';
+import PaisSelect from '../ui/PaisSelect';
 import type { Cliente, Cartera } from '../../types';
 import { esClienteActivo } from '../../utils/activo';
 
@@ -31,15 +32,28 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
     .filter(c => esClienteActivo(c) || c.id === initial?.clienteId || c.id === defaultClienteId)
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 
+  const clienteIdInicial = initial?.clienteId || defaultClienteId || (clientesOrdenados[0]?.id || '');
+  const paisCliente = (id: string) => clientes.find((c) => c.id === id)?.pais || 'Colombia';
+  const [paisManual, setPaisManual] = useState(Boolean(initial?.pais));
+
   const [form, setForm] = useState({
     nombre: initial?.nombre || '',
-    clienteId: initial?.clienteId || defaultClienteId || (clientesOrdenados[0]?.id || ''),
+    clienteId: clienteIdInicial,
     valorCartera: initial?.valorCartera?.toString() || '',
     diaPago: String(diaFromTimestamp(initial?.fechaVencimientoMensual)),
+    pais: initial?.pais || paisCliente(clienteIdInicial),
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    if (name === 'pais') setPaisManual(true);
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === 'clienteId' && !paisManual && !initial?.pais) {
+        next.pais = paisCliente(value);
+      }
+      return next;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,6 +82,7 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
         costoTotal: 0,
         fechaVencimientoMensual,
         fechaRenovacion: fechaVencimientoMensual,
+        pais: form.pais,
       };
 
       if (initial) {
@@ -111,6 +126,11 @@ export default function CarteraForm({ onClose, clientes, initial, defaultCliente
             </option>
           ))}
         </select>
+      </div>
+
+      <div>
+        <label className={labelCls}>País *</label>
+        <PaisSelect value={form.pais} onChange={handleChange} className={inputCls} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

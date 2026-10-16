@@ -30,7 +30,7 @@ function avatarColor(name: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-type SortKey = 'nombre' | 'empresa' | 'carteras' | 'valor';
+type SortKey = 'nombre' | 'empresa' | 'pais' | 'carteras' | 'valor';
 type SortDir = 'asc' | 'desc';
 
 function SortIcon({ active, dir }: { col: string; active: boolean; dir: SortDir }) {
@@ -106,6 +106,7 @@ export default function Clientes() {
         let valB: string | number = '';
         if (sortKey === 'nombre')   { valA = a.nombre; valB = b.nombre; }
         if (sortKey === 'empresa')  { valA = a.empresa || ''; valB = b.empresa || ''; }
+        if (sortKey === 'pais')     { valA = a.pais || ''; valB = b.pais || ''; }
         if (sortKey === 'carteras') { valA = carterasMap[a.id]?.count ?? 0; valB = carterasMap[b.id]?.count ?? 0; }
         if (sortKey === 'valor')    { valA = carterasMap[a.id]?.total ?? 0; valB = carterasMap[b.id]?.total ?? 0; }
         if (typeof valA === 'string') {
@@ -252,6 +253,7 @@ export default function Clientes() {
                 <tr className="bg-indigo-600 text-left">
                   <Th label="Cliente"   col="nombre" />
                   <Th label="Empresa"   col="empresa" />
+                  <Th label="País"      col="pais" />
                   <Th label="Carteras"  col="carteras" />
                   <Th label="Valor/mes" col="valor" />
                   <th className="text-white text-center">Acciones</th>
@@ -297,11 +299,6 @@ export default function Clientes() {
                             </span>
                           )}
                           <div className="flex items-center gap-2 flex-wrap">
-                            {cliente.pais && (
-                              <span className="flex items-center gap-1 text-slate-500 text-xs">
-                                <Globe size={10} className="text-slate-400" /> {cliente.pais}
-                              </span>
-                            )}
                             {cliente.ruta && (
                               <span className="flex items-center gap-1 text-slate-500 text-xs">
                                 <MapPin size={10} className="text-slate-400" /> {cliente.ruta}
@@ -315,10 +312,20 @@ export default function Clientes() {
                               <Phone size={11} /> {cliente.whatsapp}
                             </a>
                           )}
-                          {!cliente.empresa && !cliente.pais && !cliente.ruta && !cliente.whatsapp && (
+                          {!cliente.empresa && !cliente.ruta && !cliente.whatsapp && (
                             <span className="text-slate-300 text-xs italic">Sin info</span>
                           )}
                         </div>
+                      </td>
+
+                      <td>
+                        {cliente.pais ? (
+                          <span className="inline-flex items-center gap-1.5 text-slate-700 text-xs font-medium">
+                            <Globe size={12} className="text-slate-400" /> {cliente.pais}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 text-xs italic">Sin país</span>
+                        )}
                       </td>
 
                       {/* Carteras */}

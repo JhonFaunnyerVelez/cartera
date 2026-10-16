@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Phone } from 'lucide-react';
 import { useClientes } from '../../hooks/useClientes';
 import { useAliados } from '../../hooks/useAliados';
+import PaisSelect from '../ui/PaisSelect';
 import type { Cliente } from '../../types';
 
 interface ClienteFormProps {
@@ -9,7 +10,6 @@ interface ClienteFormProps {
   initial?: Cliente | null;
 }
 
-const PAISES = ['Colombia', 'México', 'Argentina', 'Chile', 'Perú', 'Venezuela', 'Ecuador', 'Bolivia', 'España', 'Otro'];
 const inputCls = "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition";
 const labelCls = "block text-sm font-medium text-slate-700 mb-1";
 
@@ -102,9 +102,7 @@ export default function ClienteForm({ onClose, initial }: ClienteFormProps) {
         </div>
         <div>
           <label className={labelCls}>País</label>
-          <select name="pais" value={form.pais} onChange={handleChange} className={inputCls}>
-            {PAISES.map((p) => <option key={p}>{p}</option>)}
-          </select>
+          <PaisSelect value={form.pais} onChange={handleChange} className={inputCls} />
         </div>
       </div>
 

@@ -35,6 +35,8 @@ export interface Cartera {
   fechaInactivacion?: Timestamp | null;
   /** Desde este día la cartera entra en los cobros. Si se reactiva, cuenta desde esa nueva fecha. */
   fechaActivacion?: Timestamp | null;
+  /** País de esta cartera. Puede ser distinto al del cliente. */
+  pais?: string;
 }
 
 export interface CarteraConCliente extends Cartera {

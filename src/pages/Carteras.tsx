@@ -1,10 +1,11 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search, CheckCircle2, XCircle, Pencil,
   Trash2, RefreshCw, AlertCircle,
   ChevronUp, ChevronDown, Briefcase, CalendarDays, Gift,
   ChevronLeft, ChevronRight, Power, PowerOff,
-  List, Calendar, Building2,
+  List, Calendar, Building2, MoreVertical, Globe,
 } from 'lucide-react';
 import { useCobros } from '../hooks/useCobros';
 import { useCarteras } from '../hooks/useCarteras';
@@ -143,6 +144,113 @@ function DiasLabel({ ts, pagado }: { ts: any; pagado: boolean }) {
   return <span className="text-xs text-slate-400">En {dias} días</span>;
 }
 
+function MenuFilaCobro({
+  cobro, cartera, isPagado, isLoading,
+  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva,
+}: {
+  cobro: CobroMensual;
+  cartera?: Cartera;
+  isPagado: boolean;
+  isLoading: boolean;
+  onPago: (cobro: CobroMensual, pagado: boolean) => void;
+  onCortesia: (cobro: CobroMensual) => void;
+  onEdit: (c: Cartera) => void;
+  onDelete: (id: string) => void;
+  onPagoAdelanto: (c: Cartera) => void;
+  onToggleActiva: (c: Cartera) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, arriba: false });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const activa = cartera ? esCarteraActiva(cartera) : false;
+  const puedeCobrar = !isPagado && !!cartera && activa;
+
+  useEffect(() => {
+    if (!abierto) return;
+    const cerrar = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (btnRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setAbierto(false);
+    };
+    document.addEventListener('mousedown', cerrar);
+    return () => document.removeEventListener('mousedown', cerrar);
+  }, [abierto]);
+
+  const toggle = () => {
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const arriba = window.innerHeight - rect.bottom < 280;
+    setPos({ top: arriba ? rect.top - 4 : rect.bottom + 4, left: rect.left, arriba });
+    setAbierto(v => !v);
+  };
+
+  const elegir = (accion: () => void) => {
+    setAbierto(false);
+    accion();
+  };
+
+  const item = 'w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50';
+
+  return (
+    <td className="w-10 text-center">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        disabled={isLoading}
+        title="Opciones"
+        className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition"
+      >
+        {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <MoreVertical size={16} />}
+      </button>
+      {abierto && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[80] min-w-[11.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+          style={{
+            top: pos.top,
+            left: pos.left,
+            transform: pos.arriba ? 'translateY(-100%)' : undefined,
+          }}
+        >
+          <button type="button" className={item} onClick={() => elegir(() => onPago(cobro, isPagado))}>
+            {isPagado ? <XCircle size={14} className="text-rose-500" /> : <CheckCircle2 size={14} className="text-emerald-600" />}
+            {isPagado ? 'Revertir pago' : 'Registrar pago'}
+          </button>
+          {puedeCobrar && (
+            <button type="button" className={item} onClick={() => elegir(() => onCortesia(cobro))}>
+              <Gift size={14} className="text-violet-600" /> Cortesía
+            </button>
+          )}
+          {puedeCobrar && (
+            <button type="button" className={item} onClick={() => elegir(() => onPagoAdelanto(cartera!))}>
+              <CalendarDays size={14} className="text-sky-600" /> Adelantar pagos
+            </button>
+          )}
+          {cartera && (
+            <button type="button" className={item} onClick={() => elegir(() => onEdit(cartera))}>
+              <Pencil size={14} className="text-slate-500" /> Editar
+            </button>
+          )}
+          {cartera && (
+            <button type="button" className={item} onClick={() => elegir(() => onToggleActiva(cartera))}>
+              {activa ? <PowerOff size={14} className="text-amber-600" /> : <Power size={14} className="text-emerald-600" />}
+              {activa ? 'Desactivar' : 'Reactivar'}
+            </button>
+          )}
+          {cartera && (
+            <button type="button" className={`${item} text-rose-600 hover:bg-rose-50`} onClick={() => elegir(() => onDelete(cartera.id))}>
+              <Trash2 size={14} /> Eliminar
+            </button>
+          )}
+        </div>,
+        document.body,
+      )}
+    </td>
+  );
+}
+
 // ─── Fila de cobro ────────────────────────────────────────────────────────────
 function CobroRow({
   cobro, cartera, cliente, aliados = [], onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
@@ -200,6 +308,18 @@ function CobroRow({
 
   return (
     <tr className={clasesFilaCobro(cobro, vistaUnificada)}>
+      <MenuFilaCobro
+        cobro={cobro}
+        cartera={cartera}
+        isPagado={isPagado}
+        isLoading={isLoading}
+        onPago={onPago}
+        onCortesia={onCortesia}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onPagoAdelanto={onPagoAdelanto}
+        onToggleActiva={onToggleActiva}
+      />
       {empresaGrupo && empresaRowSpan && (
         <td
           rowSpan={empresaRowSpan}
@@ -247,6 +367,13 @@ function CobroRow({
           )}
           {tieneAdelantoRecibido(cobro) && !esPagoAnticipado(cobro) && <BadgeRecibioAdelanto />}
         </div>
+      </td>
+
+      <td className="whitespace-nowrap">
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-700">
+          <Globe size={11} className="text-slate-400 shrink-0" />
+          {cartera.pais?.trim() || cliente?.pais?.trim() || 'Sin país'}
+        </span>
       </td>
 
       {/* Valor */}
@@ -341,85 +468,6 @@ function CobroRow({
           </span>
         )}
       </td>
-
-      {/* Acciones — siempre visibles y mejor organizadas */}
-      <td>
-        <div className="flex items-center gap-1">
-          {/* Botón Pago Normal */}
-          <button
-            onClick={() => onPago(cobro, isPagado)}
-            disabled={isLoading}
-            title={isPagado ? 'Revertir pago' : 'Registrar pago'}
-            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all
-              ${isPagado 
-                ? 'bg-rose-50 text-rose-500 hover:bg-rose-100 ring-1 ring-rose-200' 
-                : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 ring-1 ring-emerald-200'}`}
-          >
-            {isLoading ? <RefreshCw size={12} className="animate-spin" /> : isPagado ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
-          </button>
-
-          {/* Botón Cortesia (solo si está pendiente y activa) */}
-          {!isPagado && cartera && esCarteraActiva(cartera) && (
-            <button
-              onClick={() => onCortesia(cobro)}
-              disabled={isLoading}
-              title="Registrar como Cortesía ($0)"
-              className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all ring-1 ring-indigo-200 flex items-center justify-center"
-            >
-              <Gift size={14} />
-            </button>
-          )}
-
-          {/* Botón Pago Adelantado (solo si está pendiente y activa) */}
-          {!isPagado && cartera && esCarteraActiva(cartera) && (
-            <button 
-              onClick={() => onPagoAdelanto(cartera)} 
-              disabled={isLoading}
-              title="Adelantar pagos"
-              className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-all ring-1 ring-purple-200 flex items-center justify-center"
-            >
-              <CalendarDays size={14} />
-            </button>
-          )}
-
-          {/* Botón Editar Cartera */}
-          {cartera && (
-            <button 
-              onClick={() => onEdit(cartera)} 
-              title="Editar configuración"
-              className="w-7 h-7 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100 transition-all ring-1 ring-slate-200 flex items-center justify-center"
-            >
-              <Pencil size={12} />
-            </button>
-          )}
-
-          {/* Botón Eliminar Cartera */}
-          {cartera && (
-            <button 
-              onClick={() => onDelete(cartera.id)} 
-              title="Eliminar cartera"
-              className="w-7 h-7 rounded-lg bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 transition-all ring-1 ring-rose-100 flex items-center justify-center"
-            >
-              <Trash2 size={12} />
-            </button>
-          )}
-
-          {/* Activar / Desactivar */}
-          {cartera && (
-            <button
-              onClick={() => onToggleActiva(cartera)}
-              title={esCarteraActiva(cartera) ? 'Desactivar cartera' : 'Reactivar cartera'}
-              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ring-1 ${
-                esCarteraActiva(cartera)
-                  ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 ring-amber-200'
-                  : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 ring-emerald-200'
-              }`}
-            >
-              {esCarteraActiva(cartera) ? <PowerOff size={12} /> : <Power size={12} />}
-            </button>
-          )}
-        </div>
-      </td>
     </tr>
   );
 }
@@ -481,16 +529,17 @@ function CobroTable({
         <table className="data-table">
           <thead>
             <tr className="bg-indigo-600 text-left">
+              <th className="text-white w-10" />
               <th className="text-white w-28 text-center">Empresa</th>
               <th className="text-white w-10 text-center">Día</th>
               <th className="text-white">Cartera</th>
+              <th className="text-white">País</th>
               <th className="text-white">Valor</th>
               <th className="text-white">Aliado</th>
               <th className="text-white">Participación</th>
               <th className="text-white">Vencimiento</th>
               <th className="text-white">Pagado el</th>
               <th className="text-white">Estado</th>
-              <th className="text-white">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -601,6 +650,28 @@ export default function Carteras() {
     return map;
   }, [clientes]);
 
+  const resumenCarteras = useMemo(() => {
+    const porPais = new Map<string, number>();
+    let creadasEsteMes = 0;
+
+    for (const cartera of carteras) {
+      const creada = cartera.fechaCreacion?.toDate?.();
+      if (creada && creada.getMonth() + 1 === mesSel && creada.getFullYear() === anioSel) {
+        creadasEsteMes += 1;
+      }
+
+      const cliente = clientesMap.get(cartera.clienteId);
+      if (!cliente || !esCarteraActiva(cartera) || !esClienteActivo(cliente)) continue;
+      const pais = cartera.pais?.trim() || cliente.pais?.trim() || 'Sin país';
+      porPais.set(pais, (porPais.get(pais) ?? 0) + 1);
+    }
+
+    return {
+      creadasEsteMes,
+      porPais: [...porPais.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es')),
+    };
+  }, [carteras, clientesMap, mesSel, anioSel]);
+
   const cobrosDelMes = useMemo(() => {
     const carterasVivas = carteras.filter(cartera => {
       const cliente = clientesMap.get(cartera.clienteId);
@@ -617,8 +688,11 @@ export default function Carteras() {
       .filter(c => cobroVisibleEnMes(c, carterasMap.get(c.carteraId), clientesMap.get(c.clienteId)))
       .filter(c => {
         if (!search.trim()) return true;
-        const empresa = clientesMap.get(c.clienteId)?.empresa || '';
-        return [c.clienteNombre, c.carteraNombre, empresa].join(' ').toLowerCase().includes(search.toLowerCase());
+        const cliente = clientesMap.get(c.clienteId);
+        const cartera = carterasMap.get(c.carteraId);
+        const empresa = cliente?.empresa || '';
+        const pais = cartera?.pais || cliente?.pais || '';
+        return [c.clienteNombre, c.carteraNombre, empresa, pais].join(' ').toLowerCase().includes(search.toLowerCase());
       })
       .sort((a, b) => {
         const da = a.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
@@ -1090,13 +1164,32 @@ export default function Carteras() {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <div className="bg-white rounded-xl border border-indigo-200 px-3 py-2 shadow-sm min-w-[8.5rem]">
+          <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider leading-tight">
+            Activas en {MESES[mesSel - 1]}
+          </p>
+          <p className="text-base font-bold text-indigo-800 tabular-nums mt-0.5">{resumenCarteras.creadasEsteMes}</p>
+          <p className="text-[10px] text-slate-400">carteras creadas en {anioSel}</p>
+        </div>
+        {resumenCarteras.porPais.map(([pais, cantidad]) => (
+          <div key={pais} className="bg-white rounded-xl border border-slate-200 px-3 py-2 shadow-sm min-w-[7rem]">
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight flex items-center gap-1">
+              <Globe size={10} className="text-slate-400 shrink-0" />
+              <span className="truncate">{pais}</span>
+            </p>
+            <p className="text-base font-bold text-slate-800 tabular-nums mt-0.5">{cantidad}</p>
+            <p className="text-[10px] text-slate-400">cartera{cantidad !== 1 ? 's' : ''}</p>
+          </div>
+        ))}
+      </div>
 
       {/* Buscador + tabs de vista */}
       <div className="space-y-3">
         <div className="relative">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por cartera, cliente o empresa..."
+            placeholder="Buscar por cartera, cliente, empresa o país..."
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition" />
         </div>
 

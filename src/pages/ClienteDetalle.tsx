@@ -310,6 +310,7 @@ export default function ClienteDetalle() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100 text-left">
                   <th className="text-slate-500">Cartera</th>
+                  <th className="text-slate-500">País</th>
                   <th className="text-slate-500">Valor mensual</th>
                   <th className="text-slate-500">Aliado</th>
                   <th className="text-slate-500">Participación</th>
@@ -329,6 +330,9 @@ export default function ClienteDetalle() {
                         {!esCarteraActiva(cartera) && (
                           <span className="ml-1.5 text-[10px] font-bold text-slate-400 uppercase">Inactiva</span>
                         )}
+                      </td>
+                      <td className="text-slate-700 text-sm whitespace-nowrap">
+                        {cartera.pais?.trim() || cliente.pais || '—'}
                       </td>
                       <td className="font-semibold text-slate-700">{formatCOP(cartera.valorCartera)}</td>
                       <td>
