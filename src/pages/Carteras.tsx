@@ -5,7 +5,7 @@ import {
   Trash2, RefreshCw, AlertCircle,
   ChevronUp, ChevronDown, Briefcase, CalendarDays, Gift,
   ChevronLeft, ChevronRight, Power, PowerOff,
-  List, Calendar, Building2, MoreVertical, Globe,
+  List, Calendar, Building2, MoreVertical, Globe, FilePenLine, Filter,
 } from 'lucide-react';
 import { useCobros } from '../hooks/useCobros';
 import { useCarteras } from '../hooks/useCarteras';
@@ -40,6 +40,34 @@ import { agruparCobrosPorDiaYEmpresa, getEstadoVisualCobro, type EstadoTotalGrup
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+type FiltroCobro = 'vencido' | 'al-dia' | 'pagado' | 'adelanto' | 'cortesia' | 'pagado-antes';
+
+const FILTROS_VACIOS: Record<FiltroCobro, boolean> = {
+  vencido: false,
+  'al-dia': false,
+  pagado: false,
+  adelanto: false,
+  cortesia: false,
+  'pagado-antes': false,
+};
+
+const FILTROS_UI: { id: FiltroCobro; label: string; swatch: string; swatch2?: string }[] = [
+  { id: 'vencido', label: 'Vencido', swatch: 'bg-rose-300 border-rose-500' },
+  { id: 'al-dia', label: 'Aún no vence', swatch: 'bg-slate-200 border-slate-400' },
+  { id: 'pagado', label: 'Pagado', swatch: 'bg-emerald-300 border-emerald-500' },
+  { id: 'adelanto', label: 'Con adelanto', swatch: 'bg-emerald-300 border-emerald-500', swatch2: 'bg-sky-300 border-sky-500' },
+  { id: 'cortesia', label: 'Cortesía', swatch: 'bg-violet-300 border-violet-500' },
+  { id: 'pagado-antes', label: 'Pagado antes', swatch: 'bg-sky-300 border-sky-500' },
+];
+
+function tipoFiltroCobro(cobro: CobroMensual): FiltroCobro {
+  if (cobro.esCortesia && cobro.estado === 'Pagado') return 'cortesia';
+  if (esPagoAnticipado(cobro) && cobro.estado === 'Pagado') return 'pagado-antes';
+  if (tieneAdelantoRecibido(cobro) && cobro.estado === 'Pagado') return 'adelanto';
+  if (cobro.estado === 'Pagado') return 'pagado';
+  return getEstadoVisualCobro(cobro) === 'vencido' ? 'vencido' : 'al-dia';
+}
 
 const CLASES_TOTAL_GRUPO: Record<EstadoTotalGrupo, string> = {
   pagado: 'bg-emerald-500 text-white shadow-emerald-200/50',
@@ -146,7 +174,7 @@ function DiasLabel({ ts, pagado }: { ts: any; pagado: boolean }) {
 
 function MenuFilaCobro({
   cobro, cartera, isPagado, isLoading,
-  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva,
+  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onToggleActiva,
 }: {
   cobro: CobroMensual;
   cartera?: Cartera;
@@ -157,6 +185,7 @@ function MenuFilaCobro({
   onEdit: (c: Cartera) => void;
   onDelete: (id: string) => void;
   onPagoAdelanto: (c: Cartera) => void;
+  onEditarPago: (cobro: CobroMensual, cartera: Cartera) => void;
   onToggleActiva: (c: Cartera) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
@@ -165,6 +194,7 @@ function MenuFilaCobro({
   const menuRef = useRef<HTMLDivElement>(null);
   const activa = cartera ? esCarteraActiva(cartera) : false;
   const puedeCobrar = !isPagado && !!cartera && activa;
+  const puedeEditarPago = isPagado && !!cartera && !cobro.esCortesia && !cobro.esPagoAdelantado;
 
   useEffect(() => {
     if (!abierto) return;
@@ -180,7 +210,7 @@ function MenuFilaCobro({
   const toggle = () => {
     const rect = btnRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const arriba = window.innerHeight - rect.bottom < 280;
+    const arriba = window.innerHeight - rect.bottom < 320;
     setPos({ top: arriba ? rect.top - 4 : rect.bottom + 4, left: rect.left, arriba });
     setAbierto(v => !v);
   };
@@ -218,6 +248,11 @@ function MenuFilaCobro({
             {isPagado ? <XCircle size={14} className="text-rose-500" /> : <CheckCircle2 size={14} className="text-emerald-600" />}
             {isPagado ? 'Revertir pago' : 'Registrar pago'}
           </button>
+          {puedeEditarPago && (
+            <button type="button" className={item} onClick={() => elegir(() => onEditarPago(cobro, cartera!))}>
+              <FilePenLine size={14} className="text-indigo-600" /> Editar pago
+            </button>
+          )}
           {puedeCobrar && (
             <button type="button" className={item} onClick={() => elegir(() => onCortesia(cobro))}>
               <Gift size={14} className="text-violet-600" /> Cortesía
@@ -230,7 +265,7 @@ function MenuFilaCobro({
           )}
           {cartera && (
             <button type="button" className={item} onClick={() => elegir(() => onEdit(cartera))}>
-              <Pencil size={14} className="text-slate-500" /> Editar
+              <Pencil size={14} className="text-slate-500" /> Editar cartera
             </button>
           )}
           {cartera && (
@@ -253,7 +288,7 @@ function MenuFilaCobro({
 
 // ─── Fila de cobro ────────────────────────────────────────────────────────────
 function CobroRow({
-  cobro, cartera, cliente, aliados = [], onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
+  cobro, cartera, cliente, aliados = [], onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onToggleActiva, loadingId,
   vistaUnificada = false,
   empresaGrupo,
   empresaRowSpan,
@@ -269,6 +304,7 @@ function CobroRow({
   onEdit: (c: Cartera) => void;
   onDelete: (id: string) => void;
   onPagoAdelanto: (c: Cartera) => void;
+  onEditarPago: (cobro: CobroMensual, cartera: Cartera) => void;
   onToggleActiva: (c: Cartera) => void;
   loadingId: string | null;
   vistaUnificada?: boolean;
@@ -318,6 +354,7 @@ function CobroRow({
         onEdit={onEdit}
         onDelete={onDelete}
         onPagoAdelanto={onPagoAdelanto}
+        onEditarPago={onEditarPago}
         onToggleActiva={onToggleActiva}
       />
       {empresaGrupo && empresaRowSpan && (
@@ -508,6 +545,7 @@ type CobroTableProps = {
   onEdit: (c: Cartera) => void;
   onDelete: (id: string) => void;
   onPagoAdelanto: (c: Cartera) => void;
+  onEditarPago: (cobro: CobroMensual, cartera: Cartera) => void;
   onToggleActiva: (c: Cartera) => void;
   loadingId: string | null;
   vistaUnificada?: boolean;
@@ -515,7 +553,7 @@ type CobroTableProps = {
 
 function CobroTable({
   cobros, carteras, clientesMap, aliados,
-  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onToggleActiva, loadingId,
+  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onToggleActiva, loadingId,
   vistaUnificada = false,
 }: CobroTableProps) {
   const bloques = useMemo(
@@ -559,6 +597,7 @@ function CobroTable({
                         onEdit={onEdit}
                         onDelete={onDelete}
                         onPagoAdelanto={onPagoAdelanto}
+                        onEditarPago={onEditarPago}
                         onToggleActiva={onToggleActiva}
                         loadingId={loadingId}
                         vistaUnificada={vistaUnificada}
@@ -613,9 +652,11 @@ export default function Carteras() {
   const puedeGenerar = mesPasado;
 
   const [search, setSearch] = useState('');
+  const [filtros, setFiltros] = useState<Record<FiltroCobro, boolean>>(FILTROS_VACIOS);
   const [modalOpen, setModalOpen] = useState(false);
   const [editCartera, setEditCartera] = useState<Cartera | null>(null);
   const [adelantoCartera, setAdelantoCartera] = useState<Cartera | null>(null);
+  const [pagoEditar, setPagoEditar] = useState<{ cobro: CobroMensual; cartera: Cartera } | null>(null);
   const [pagoCobro, setPagoCobro] = useState<CobroMensual | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
@@ -700,6 +741,39 @@ export default function Carteras() {
         return da - db;
       });
   }, [cobrosDelMes, search, carterasMap, clientesMap]);
+
+  const conteoFiltros = useMemo(() => {
+    const conteo: Record<FiltroCobro, number> = {
+      vencido: 0, 'al-dia': 0, pagado: 0, adelanto: 0, cortesia: 0, 'pagado-antes': 0,
+    };
+    for (const cobro of cobrosOrdenados) conteo[tipoFiltroCobro(cobro)] += 1;
+    return conteo;
+  }, [cobrosOrdenados]);
+
+  const filtrosTodos = FILTROS_UI.every(f => !filtros[f.id]);
+  const cobrosTabla = useMemo(
+    () => filtrosTodos ? cobrosOrdenados : cobrosOrdenados.filter(c => filtros[tipoFiltroCobro(c)]),
+    [cobrosOrdenados, filtros, filtrosTodos],
+  );
+
+  const pendientesTabla = useMemo(() => cobrosTabla.filter(c => c.estado !== 'Pagado'), [cobrosTabla]);
+  const pagadosTabla = useMemo(() => cobrosTabla.filter(c => c.estado === 'Pagado'), [cobrosTabla]);
+  const pagadosCajaTabla = useMemo(
+    () => pagadosTabla.filter(c => !esPagoAnticipado(c) && !c.esCortesia),
+    [pagadosTabla],
+  );
+  const pagadosAnticipadosTabla = useMemo(
+    () => pagadosTabla.filter(c => esPagoAnticipado(c)),
+    [pagadosTabla],
+  );
+  const pagadosCortesiaTabla = useMemo(
+    () => pagadosTabla.filter(c => c.esCortesia),
+    [pagadosTabla],
+  );
+  const toggleFiltro = (id: FiltroCobro) => {
+    setFiltros(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+  const activarTodos = () => setFiltros(FILTROS_VACIOS);
 
   const pendientes = useMemo(() => cobrosOrdenados.filter(c => c.estado !== 'Pagado'), [cobrosOrdenados]);
   const pagados    = useMemo(() => cobrosOrdenados.filter(c => c.estado === 'Pagado'), [cobrosOrdenados]);
@@ -885,6 +959,7 @@ export default function Carteras() {
 
   const handleEdit = (c: Cartera) => { setEditCartera(c); setModalOpen(true); };
   const handlePagoAdelanto = (c: Cartera) => setAdelantoCartera(c);
+  const handleEditarPago = (cobro: CobroMensual, cartera: Cartera) => setPagoEditar({ cobro, cartera });
 
   const handleToggleActiva = (cartera: Cartera) => {
     const activa = esCarteraActiva(cartera);
@@ -1193,7 +1268,7 @@ export default function Carteras() {
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition" />
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3">
           <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 w-full sm:w-auto overflow-x-auto">
             <button
               type="button"
@@ -1219,31 +1294,46 @@ export default function Carteras() {
             </button>
           </div>
 
-          {vistaTab === 'unificada' && (
-            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-emerald-300 border border-emerald-500" /> Pagado
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-slate-200 border border-slate-400" /> Aún no vence
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-rose-300 border border-rose-500" /> Vencido / sin pagar
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-violet-300 border border-violet-500" /> Cortesía
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-sky-300 border border-sky-500" /> Pagado antes (sin caja)
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded bg-emerald-300 border border-emerald-500" />
-                <span className="text-slate-400">+</span>
-                <span className="w-3.5 h-3.5 rounded bg-sky-300 border border-sky-500" />
-                Pago con adelanto (suma caja)
-              </span>
+          <div className="bg-white rounded-xl border border-slate-200 px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 inline-flex items-center gap-1.5 mr-1">
+                <Filter size={11} /> Filtros
+              </p>
+              <label className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-semibold cursor-pointer select-none ${
+                filtrosTodos ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-400'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={filtrosTodos}
+                  onChange={activarTodos}
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-300"
+                />
+                Todos
+                <span className="tabular-nums text-[10px] text-slate-400">{cobrosOrdenados.length}</span>
+              </label>
+              {FILTROS_UI.map(f => (
+                <label
+                  key={f.id}
+                  className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-semibold cursor-pointer select-none transition ${
+                    filtros[f.id]
+                      ? 'bg-white border-slate-300 text-slate-700'
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={filtros[f.id]}
+                    onChange={() => toggleFiltro(f.id)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-300"
+                  />
+                  <span className={`w-3 h-3 rounded border ${f.swatch}`} />
+                  {f.swatch2 && <span className={`w-3 h-3 rounded border ${f.swatch2}`} />}
+                  {f.label}
+                  <span className="tabular-nums text-[10px] text-slate-400">{conteoFiltros[f.id]}</span>
+                </label>
+              ))}
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -1275,9 +1365,16 @@ export default function Carteras() {
               Sin resultados para "<strong>{search}</strong>"
             </div>
           ) : null
+        ) : cobrosTabla.length === 0 ? (
+          <div className="bg-white rounded-xl border border-dashed border-slate-200 py-10 text-center text-slate-400 text-sm">
+            Ningún cobro con esos filtros.
+            <button type="button" onClick={activarTodos} className="ml-2 text-indigo-600 font-semibold hover:text-indigo-800">
+              Ver todos
+            </button>
+          </div>
         ) : (
           <CobroTable
-            cobros={cobrosOrdenados}
+            cobros={cobrosTabla}
             carteras={carteras}
             clientesMap={clientesMap}
             aliados={aliados}
@@ -1286,6 +1383,7 @@ export default function Carteras() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onPagoAdelanto={handlePagoAdelanto}
+            onEditarPago={handleEditarPago}
             onToggleActiva={handleToggleActiva}
             loadingId={loadingId}
             vistaUnificada
@@ -1294,42 +1392,55 @@ export default function Carteras() {
       ) : (
         <div className="space-y-3">
           {/* Pendientes */}
-          {pendientes.length > 0 && (
+          {pendientesTabla.length > 0 && (
             <div className="space-y-2">
-              <SectionHeader label="⚡ Pendientes de cobro" count={pendientes.length}
-                total={formatCOP(totalPend)} color="rose"
+              <SectionHeader label="⚡ Pendientes de cobro" count={pendientesTabla.length}
+                total={formatCOP(pendientesTabla.reduce((s, c) => s + c.valorCobro, 0))} color="rose"
                 collapsed={colPend} onToggle={() => setColPend(v => !v)} />
               {!colPend && (
-                <CobroTable cobros={pendientes} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
+                <CobroTable cobros={pendientesTabla} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
-                  onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
+                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
             </div>
           )}
 
           {/* Pagados */}
-          {pagadosCaja.length > 0 && (
+          {pagadosCajaTabla.length > 0 && (
             <div className="space-y-2">
-              <SectionHeader label="✓ Cobrado en caja" count={pagadosCaja.length}
-                total={formatCOP(totalPag + totalAdelantadoRecibido)} color="emerald"
+              <SectionHeader label="✓ Cobrado en caja" count={pagadosCajaTabla.length}
+                total={formatCOP(pagadosCajaTabla.reduce((s, c) => s + c.valorCobro + (c.montoAdelantado || 0), 0))} color="emerald"
                 collapsed={colPag} onToggle={() => setColPag(v => !v)} />
               {!colPag && (
-                <CobroTable cobros={pagadosCaja} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
+                <CobroTable cobros={pagadosCajaTabla} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
-                  onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
+                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
             </div>
           )}
 
-          {pagadosAnticipados.length > 0 && (
+          {pagadosCortesiaTabla.length > 0 && (
             <div className="space-y-2">
-              <SectionHeader label="⏩ Pagados antes (no suman a caja)" count={pagadosAnticipados.length}
+              <SectionHeader label="Cortesías" count={pagadosCortesiaTabla.length}
+                total={formatCOP(pagadosCortesiaTabla.reduce((s, c) => s + c.valorCobro, 0))} color="rose"
+                collapsed={colPag} onToggle={() => setColPag(v => !v)} />
+              {!colPag && (
+                <CobroTable cobros={pagadosCortesiaTabla} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
+                  onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
+                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
+              )}
+            </div>
+          )}
+
+          {pagadosAnticipadosTabla.length > 0 && (
+            <div className="space-y-2">
+              <SectionHeader label="⏩ Pagados antes (no suman a caja)" count={pagadosAnticipadosTabla.length}
                 total={formatCOP(0)} color="rose"
                 collapsed={colPag} onToggle={() => setColPag(v => !v)} />
               {!colPag && (
-                <CobroTable cobros={pagadosAnticipados} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
+                <CobroTable cobros={pagadosAnticipadosTabla} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
-                  onPagoAdelanto={handlePagoAdelanto} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
+                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
             </div>
           )}
@@ -1337,6 +1448,14 @@ export default function Carteras() {
           {cobrosOrdenados.length === 0 && search && (
             <div className="bg-white rounded-xl border border-dashed border-slate-200 py-10 text-center text-slate-400 text-sm">
               Sin resultados para "<strong>{search}</strong>"
+            </div>
+          )}
+          {cobrosOrdenados.length > 0 && cobrosTabla.length === 0 && (
+            <div className="bg-white rounded-xl border border-dashed border-slate-200 py-10 text-center text-slate-400 text-sm">
+              Ningún cobro con esos filtros.
+              <button type="button" onClick={activarTodos} className="ml-2 text-indigo-600 font-semibold hover:text-indigo-800">
+                Ver todos
+              </button>
             </div>
           )}
         </div>
@@ -1355,6 +1474,19 @@ export default function Carteras() {
             mesActual={mesActual}
             anioActual={anioActual}
             onClose={() => setAdelantoCartera(null)}
+          />
+        )}
+      </Modal>
+
+      <Modal isOpen={!!pagoEditar} onClose={() => setPagoEditar(null)}
+        title="Editar pago" size="md">
+        {pagoEditar && (
+          <PagoAdelantoModal
+            cartera={pagoEditar.cartera}
+            cobro={pagoEditar.cobro}
+            mesActual={pagoEditar.cobro.mes}
+            anioActual={pagoEditar.cobro.anio}
+            onClose={() => setPagoEditar(null)}
           />
         )}
       </Modal>

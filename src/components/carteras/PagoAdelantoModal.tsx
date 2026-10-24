@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarDays, Loader2, CheckCircle2 } from 'lucide-react';
-import { registrarPagoAdelantado } from '../../services/pagoAdelantado';
+import { editarPago, mesesRegistradosDelPago, registrarPagoAdelantado } from '../../services/pagoAdelantado';
 import { useClientes } from '../../hooks/useClientes';
 import { useAliados } from '../../hooks/useAliados';
-import type { Cartera } from '../../types';
+import type { Cartera, CobroMensual } from '../../types';
 import { calcularParticipacion } from '../../utils/participacionAliado';
 
 function formatCOP(v: number) {
@@ -14,16 +14,25 @@ interface Props {
   cartera: Cartera;
   mesActual: number;
   anioActual: number;
+  cobro?: CobroMensual;
   onClose: () => void;
 }
 
-export default function PagoAdelantoModal({ cartera, mesActual, anioActual, onClose }: Props) {
-  const [meses, setMeses] = useState(2);
+export default function PagoAdelantoModal({ cartera, mesActual, anioActual, cobro, onClose }: Props) {
+  const editando = !!cobro;
+  const mesesIniciales = cobro ? mesesRegistradosDelPago(cobro) : 2;
+  const [meses, setMeses] = useState(mesesIniciales);
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<string[] | null>(null);
   const [error, setError] = useState('');
   const { clientes } = useClientes();
   const { aliados } = useAliados();
+
+  useEffect(() => {
+    setMeses(cobro ? mesesRegistradosDelPago(cobro) : 2);
+    setResultado(null);
+    setError('');
+  }, [cobro?.id, cartera.id]);
 
   const totalAPagar = cartera.valorCartera * meses;
   const cliente = clientes.find(c => c.id === cartera.clienteId);
@@ -35,10 +44,12 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, onCl
     setLoading(true);
     setError('');
     try {
-      const res = await registrarPagoAdelantado(cartera, mesActual, anioActual, meses);
+      const res = cobro
+        ? await editarPago(cartera, cobro, meses)
+        : await registrarPagoAdelantado(cartera, mesActual, anioActual, meses);
       setResultado(res.periodos);
     } catch (e: any) {
-      setError(e.message || 'Error al registrar el pago.');
+      setError(e.message || (editando ? 'Error al editar el pago.' : 'Error al registrar el pago.'));
     } finally {
       setLoading(false);
     }
@@ -52,9 +63,9 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, onCl
           <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
             <CheckCircle2 size={28} className="text-emerald-600" />
           </div>
-          <h3 className="font-bold text-slate-800 text-lg mb-1">¡Pago registrado!</h3>
+          <h3 className="font-bold text-slate-800 text-lg mb-1">{editando ? '¡Pago actualizado!' : '¡Pago registrado!'}</h3>
           <p className="text-slate-500 text-sm mb-4">
-            {formatCOP(totalAPagar)} pagados por {meses} meses
+            {formatCOP(totalAPagar)} {editando ? 'quedan' : 'pagados'} por {meses} {meses === 1 ? 'mes' : 'meses'}
           </p>
           <div className="flex flex-wrap justify-center gap-2 mb-6">
             {resultado.map((p) => (
@@ -79,8 +90,15 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, onCl
 
           {/* Selector de meses */}
           <div>
+            {editando && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 mb-3">
+                Este pago ya está registrado ({mesesIniciales} {mesesIniciales === 1 ? 'cuota' : 'cuotas'}).
+                Cambia las cuotas y se ajustan los meses siguientes, sin borrar el pago.
+              </div>
+            )}
+
             <label className="block text-sm font-medium text-slate-700 mb-2">
-              ¿Cuántos meses paga por adelantado?
+              {editando ? '¿Cuántas cuotas quedaron pagadas?' : '¿Cuántos meses paga por adelantado?'}
             </label>
             {/* Botones rápidos */}
             <div className="grid grid-cols-4 gap-2 mb-3">
@@ -118,7 +136,7 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, onCl
               <span className="font-semibold text-slate-800">{meses}</span>
             </div>
             <div className="border-t border-slate-200 pt-2 flex justify-between">
-              <span className="font-semibold text-slate-700">Total a registrar</span>
+              <span className="font-semibold text-slate-700">{editando ? 'Total del pago' : 'Total a registrar'}</span>
               <span className="font-bold text-emerald-600 text-lg">{formatCOP(totalAPagar)}</span>
             </div>
             {comisionMes > 0 && aliado && (
@@ -141,7 +159,11 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, onCl
             </button>
             <button onClick={handleConfirm} disabled={loading}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition disabled:opacity-60">
-              {loading ? <><Loader2 size={15} className="animate-spin" /> Registrando...</> : `Registrar pago de ${meses} ${meses === 1 ? 'mes' : 'meses'}`}
+              {loading
+                ? <><Loader2 size={15} className="animate-spin" /> {editando ? 'Guardando...' : 'Registrando...'}</>
+                : editando
+                  ? `Guardar ${meses} ${meses === 1 ? 'cuota' : 'cuotas'}`
+                  : `Registrar pago de ${meses} ${meses === 1 ? 'mes' : 'meses'}`}
             </button>
           </div>
         </>
