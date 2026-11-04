@@ -1471,8 +1471,8 @@ export default function Carteras() {
         {adelantoCartera && (
           <PagoAdelantoModal
             cartera={adelantoCartera}
-            mesActual={mesActual}
-            anioActual={anioActual}
+            mesActual={mesSel}
+            anioActual={anioSel}
             onClose={() => setAdelantoCartera(null)}
           />
         )}
