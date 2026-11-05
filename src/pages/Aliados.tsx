@@ -188,7 +188,7 @@ export default function Aliados() {
                   <th className="text-white">Banco</th>
                   <th className="text-white">Referidos</th>
                   <th className="text-white">Facturado</th>
-                  <th className="text-white">A pagar 1–5</th>
+                  <th className="text-white">Por pagar 1–5</th>
                   <th className="text-white text-center">Acciones</th>
                 </tr>
               </thead>

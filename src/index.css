@@ -79,3 +79,24 @@
     color: #ffffff;
   }
 }
+
+@media print {
+  body {
+    background: #fff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  .print-factura {
+    box-shadow: none !important;
+    border-color: #cbd5e1 !important;
+  }
+}

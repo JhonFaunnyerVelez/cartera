@@ -221,6 +221,15 @@ export interface Aliado {
 
 export type EstadoLiquidacionAliado = 'Pendiente' | 'Pagado';
 
+/** Comprobante de transferencia al aliado (imagen o PDF). */
+export interface ComprobanteAliado {
+  url: string;
+  nombre: string;
+  contentType: string;
+  path: string;
+  size: number;
+}
+
 /** Parte del cobro que se transfiere al banco del aliado en los primeros 5 días del mes siguiente. */
 export interface LiquidacionAliado {
   id: string;
@@ -251,6 +260,8 @@ export interface LiquidacionAliado {
   estado: EstadoLiquidacionAliado;
   fechaCreacion: Timestamp;
   fechaPago: Timestamp | null;
+  /** Comprobantes de pago adjuntos al marcar como pagado. */
+  comprobantes?: ComprobanteAliado[];
 }
 
 export interface ResumenInversionMensual {

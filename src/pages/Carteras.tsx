@@ -5,7 +5,7 @@ import {
   Trash2, RefreshCw, AlertCircle,
   ChevronUp, ChevronDown, Briefcase, CalendarDays, Gift,
   ChevronLeft, ChevronRight, Power, PowerOff,
-  List, Calendar, Building2, MoreVertical, Globe, FilePenLine, Filter,
+  List, Calendar, Building2, MoreVertical, Globe, FilePenLine, Filter, Handshake,
 } from 'lucide-react';
 import { useCobros } from '../hooks/useCobros';
 import { useCarteras } from '../hooks/useCarteras';
@@ -21,7 +21,7 @@ import CarteraForm from '../components/carteras/CarteraForm';
 import PagoAdelantoModal from '../components/carteras/PagoAdelantoModal';
 import RegistroPagoModal from '../components/carteras/RegistroPagoModal';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { cobroVisibleEnMes, esCarteraActiva, esClienteActivo } from '../utils/activo';
+import { carteraCuentaEnMes, cobroVisibleEnMes, esCarteraActiva, esClienteActivo } from '../utils/activo';
 import { esMesPasado } from '../utils/periodo';
 import {
   combinarCobrosConVirtuales,
@@ -652,6 +652,7 @@ export default function Carteras() {
   const puedeGenerar = mesPasado;
 
   const [search, setSearch] = useState('');
+  const [filtroReferido, setFiltroReferido] = useState<'todos' | 'referidas' | 'sin-referido'>('todos');
   const [filtros, setFiltros] = useState<Record<FiltroCobro, boolean>>(FILTROS_VACIOS);
   const [modalOpen, setModalOpen] = useState(false);
   const [editCartera, setEditCartera] = useState<Cartera | null>(null);
@@ -723,24 +724,36 @@ export default function Carteras() {
     return combinarCobrosConVirtuales(reales, carterasVivas, mesSel, anioSel);
   }, [cobros, carteras, clientesMap, mesSel, anioSel]);
 
+  const esCobroReferido = (clienteId: string) => {
+    const cliente = clientesMap.get(clienteId);
+    return !!resumenParticipacion(cliente, aliados);
+  };
+
   // Ordenar por fecha de vencimiento ASCENDENTE (más urgente primero)
   const cobrosOrdenados = useMemo(() => {
     return [...cobrosDelMes]
       .filter(c => cobroVisibleEnMes(c, carterasMap.get(c.carteraId), clientesMap.get(c.clienteId)))
+      .filter(c => {
+        if (filtroReferido === 'referidas') return esCobroReferido(c.clienteId);
+        if (filtroReferido === 'sin-referido') return !esCobroReferido(c.clienteId);
+        return true;
+      })
       .filter(c => {
         if (!search.trim()) return true;
         const cliente = clientesMap.get(c.clienteId);
         const cartera = carterasMap.get(c.carteraId);
         const empresa = cliente?.empresa || '';
         const pais = cartera?.pais || cliente?.pais || '';
-        return [c.clienteNombre, c.carteraNombre, empresa, pais].join(' ').toLowerCase().includes(search.toLowerCase());
+        const aliado = resumenParticipacion(cliente, aliados);
+        const aliadoTxt = aliado ? `${aliado.aliadoCodigo} ${aliado.aliadoNombre}` : '';
+        return [c.clienteNombre, c.carteraNombre, empresa, pais, aliadoTxt].join(' ').toLowerCase().includes(search.toLowerCase());
       })
       .sort((a, b) => {
         const da = a.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
         const db = b.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
         return da - db;
       });
-  }, [cobrosDelMes, search, carterasMap, clientesMap]);
+  }, [cobrosDelMes, search, carterasMap, clientesMap, filtroReferido, aliados]);
 
   const conteoFiltros = useMemo(() => {
     const conteo: Record<FiltroCobro, number> = {
@@ -842,7 +855,7 @@ export default function Carteras() {
     let total = 0;
     let cantidad = 0;
     for (const cobro of cobrosOrdenados) {
-      if (cobro.esCortesia || esPagoAnticipado(cobro)) continue;
+      if (cobro.estado === 'Pagado' || cobro.esCortesia || esPagoAnticipado(cobro)) continue;
       const cliente = clientesMap.get(cobro.clienteId);
       const info = resumenParticipacion(cliente, aliados);
       if (!info || !cliente?.aliadoId) continue;
@@ -884,6 +897,69 @@ export default function Carteras() {
     }
     return { total, cantidad, detalle: [...porAliado.values()] };
   }, [liquidaciones, mesSel, anioSel]);
+
+  const acumuladoAliados = useMemo(() => {
+    const porAliado = new Map<string, { codigo: string; nombre: string; total: number; cantidad: number }>();
+    let total = 0;
+    let cantidad = 0;
+    for (const l of liquidaciones) {
+      if (!l.mesCobro || !l.anioCobro || l.estado === 'Pagado') continue;
+      const esHastaEsteMes = l.anioCobro < anioSel || (l.anioCobro === anioSel && l.mesCobro <= mesSel);
+      if (!esHastaEsteMes) continue;
+      total += l.montoParticipacion;
+      cantidad += 1;
+      const prev = porAliado.get(l.aliadoId) ?? {
+        codigo: l.aliadoCodigo,
+        nombre: l.aliadoNombre,
+        total: 0,
+        cantidad: 0,
+      };
+      prev.total += l.montoParticipacion;
+      prev.cantidad += 1;
+      porAliado.set(l.aliadoId, prev);
+    }
+    return { total, cantidad, detalle: [...porAliado.values()] };
+  }, [liquidaciones, mesSel, anioSel]);
+
+  /**
+   * Portafolio completo de referidos del mes (todas las carteras activas con aliado
+   * que ya cuentan en este mes), y desglose de ese total: facturado / por cobrar / otros.
+   */
+  const referidosMesActual = useMemo(() => {
+    const clientesIds = new Set<string>();
+    const aliadosIds = new Set<string>();
+    let carterasCount = 0;
+    let total = 0;
+
+    for (const cartera of carteras) {
+      if (!esCarteraActiva(cartera)) continue;
+      if (!carteraCuentaEnMes(cartera, mesSel, anioSel)) continue;
+      const cliente = clientesMap.get(cartera.clienteId);
+      if (!cliente || !esClienteActivo(cliente)) continue;
+      const info = resumenParticipacion(cliente, aliados);
+      if (!info || !cliente.aliadoId) continue;
+      const monto = calcularParticipacion(cartera.valorCartera, info.porcentaje);
+      if (monto <= 0) continue;
+      clientesIds.add(cliente.id);
+      aliadosIds.add(cliente.aliadoId);
+      carterasCount += 1;
+      total += monto;
+    }
+
+    const facturado = facturadoAliados.total;
+    const porCobrar = participacionAliados.total;
+    const otros = Math.max(0, total - facturado - porCobrar);
+
+    return {
+      referidos: clientesIds.size,
+      aliados: aliadosIds.size,
+      carteras: carterasCount,
+      total,
+      facturado,
+      porCobrar,
+      otros,
+    };
+  }, [carteras, clientesMap, aliados, mesSel, anioSel, facturadoAliados.total, participacionAliados.total]);
 
   const handlePago = (cobro: CobroMensual, isPagado: boolean) => {
     if (isPagado) {
@@ -1112,129 +1188,298 @@ export default function Carteras() {
         </div>
       )}
 
-      {/* KPIs principales */}
-      <div className="space-y-2">
-        <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1.15fr_0.8fr] gap-2">
-          <div className="bg-white rounded-xl border border-indigo-100 p-3 shadow-sm grid grid-cols-[0.85fr_1.15fr_0.75fr] divide-x divide-indigo-100 gap-2 items-start">
-            <div className="min-w-0 pr-1">
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">Lo que va a cobrar</p>
-              <p className="text-base font-bold text-slate-700 tabular-nums mt-1">{formatCOP(totalGen)}</p>
-              <p className="text-[10px] text-slate-400 mt-1">{cobrosOrdenados.length} carteras</p>
-            </div>
-            <div className="min-w-0 px-1">
-              <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider leading-tight">Realmente a cobrar</p>
-              <p className="text-base font-bold text-indigo-700 tabular-nums mt-1">{formatCOP(realmenteACobrar)}</p>
-              <p className="text-[10px] text-slate-400 mt-1">{carterasRealmenteACobrar} pagos</p>
-              <p className="text-[10px] text-slate-400 tabular-nums leading-snug">
-                {formatCOP(totalGen)}
-                {' − '}
-                <span className={totalCortesiaNominal > 0 ? 'text-violet-700 font-semibold line-through decoration-violet-400/70' : ''}>
-                  {formatCOP(totalCortesiaNominal)}
-                </span>
-                {' − '}
-                <span className={totalAnticipadoNominal > 0 ? 'text-sky-700 font-semibold line-through decoration-sky-400/70' : ''}>
-                  {formatCOP(totalAnticipadoNominal)}
-                </span>
-              </p>
-            </div>
-            <div className="min-w-0 pl-1">
-              <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider leading-tight">Pagos cobrados</p>
-              <p className="text-base font-bold text-indigo-700 tabular-nums mt-1">{pctPagos}%</p>
-              <p className="text-[10px] text-slate-400 mt-1">
-                {pagadosCaja.length}/{carterasRealmenteACobrar}
-                {pctRecaudoReal !== pctPagos && ` · ${pctRecaudoReal}% $`}
-              </p>
-              <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
-                <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(100, pctPagos)}%` }} />
-              </div>
+      {/* KPIs principales — total primero, luego desglose */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-2">
+        {/* 1 · Cobro del mes */}
+        <div className="bg-white rounded-xl border border-indigo-100 p-3 shadow-sm divide-y divide-indigo-100">
+          <div className="pb-2">
+            <p className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider leading-tight">
+              1 · Cobro de {MESES[mesSel - 1]}
+            </p>
+            <p className="text-lg font-bold text-slate-900 tabular-nums mt-1">
+              {cobrosOrdenados.length} cartera{cobrosOrdenados.length !== 1 ? 's' : ''}
+            </p>
+            <p className="text-base font-bold text-indigo-800 tabular-nums">
+              {formatCOP(totalGen)}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Total nominal del mes · {pctPagos}% cobrado ({pagadosCaja.length}/{carterasRealmenteACobrar})
+            </p>
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2">
+              <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(100, pctPagos)}%` }} />
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-emerald-100 p-3 shadow-sm grid grid-cols-2 divide-x divide-emerald-100 gap-2 items-start">
-            <div className="min-w-0 pr-1">
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">Ya cobrado</p>
-              <p className="text-base font-bold text-emerald-600 tabular-nums mt-1">{formatCOP(totalPag)}</p>
-              <p className="text-[10px] text-slate-400 mt-1">{pagadosCaja.length} pagos</p>
-            </div>
-            <div className="min-w-0 pl-2 space-y-2">
-              <div>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">En caja</p>
-                <p className="text-base font-bold text-sky-700 tabular-nums mt-1">{formatCOP(totalCaja)}</p>
-                <p className="text-[10px] text-slate-400 mt-1 tabular-nums leading-snug">
-                  {formatCOP(totalPag)} + {formatCOP(totalAdelantadoRecibido)}
-                </p>
+          <div className="py-2 space-y-2">
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">De ese total</p>
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-2.5 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[10px] text-indigo-700 font-bold uppercase tracking-wider">Realmente a cobrar</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Sin cortesías ni pagados antes</p>
+                </div>
+                <p className="text-sm font-bold text-indigo-800 tabular-nums">{formatCOP(realmenteACobrar)}</p>
               </div>
-              <div className="border-t border-emerald-100 pt-2">
-                <p className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider leading-tight">En caja − aliados</p>
-                <p className="text-base font-bold text-emerald-700 tabular-nums mt-1">{formatCOP(cajaSinAliados)}</p>
-                <p className="text-[10px] text-slate-400 mt-1 tabular-nums leading-snug">
-                  {formatCOP(totalCaja)} − {formatCOP(comisionDentroDeCaja)} · solo este mes
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-400 mt-1">{carterasRealmenteACobrar} pago{carterasRealmenteACobrar !== 1 ? 's' : ''}</p>
             </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-rose-100 p-3 shadow-sm">
-            <div className="min-w-0">
-              <p className="text-[10px] text-rose-600 font-bold uppercase tracking-wider leading-tight">Lo que falta</p>
-              <p className="text-base font-bold text-rose-600 tabular-nums mt-1">{formatCOP(totalPend)}</p>
-              <p className="text-[10px] text-slate-400 mt-1">{pendientes.length} pendientes</p>
-              <p className="text-[10px] text-slate-400 tabular-nums leading-snug">
-                {formatCOP(realmenteACobrar)} − {formatCOP(totalPag)}
+            <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-2.5 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Ya cobrado</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Entró a caja este mes</p>
+                </div>
+                <p className="text-sm font-bold text-emerald-700 tabular-nums">{formatCOP(totalPag)}</p>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">{pagadosCaja.length} pago{pagadosCaja.length !== 1 ? 's' : ''} · {pctRecaudoReal}% del realmente a cobrar</p>
+            </div>
+            <div className="rounded-lg bg-rose-50 border border-rose-100 px-2.5 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[10px] text-rose-700 font-bold uppercase tracking-wider">Lo que falta</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Pendiente por cobrar</p>
+                </div>
+                <p className="text-sm font-bold text-rose-700 tabular-nums">{formatCOP(totalPend)}</p>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1 tabular-nums">
+                {pendientes.length} pendiente{pendientes.length !== 1 ? 's' : ''} · {formatCOP(realmenteACobrar)} − {formatCOP(totalPag)}
               </p>
             </div>
+            {(totalCortesiaNominal > 0 || totalAnticipadoNominal > 0) && (
+              <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">No cobran este mes</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Cortesías + pagados antes</p>
+                  </div>
+                  <p className="text-sm font-bold text-slate-700 tabular-nums line-through decoration-slate-400/60">
+                    {formatCOP(totalCortesiaNominal + totalAnticipadoNominal)}
+                  </p>
+                </div>
+              </div>
+            )}
+            <p className="text-[10px] text-slate-400 tabular-nums text-right">
+              {formatCOP(realmenteACobrar)} + {formatCOP(totalCortesiaNominal + totalAnticipadoNominal)} = {formatCOP(totalGen)}
+            </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
-          <div className="bg-white rounded-xl border border-sky-100 p-3 shadow-sm grid grid-cols-2 divide-x divide-sky-100 gap-2">
-            <div className="min-w-0 pr-1">
-              <p className="text-[10px] text-sky-700 font-bold uppercase tracking-wider leading-tight">A cobrar aliados</p>
-              <p className="text-base font-bold text-sky-800 tabular-nums mt-1">{formatCOP(participacionAliados.total)}</p>
+        {/* 2 · Caja */}
+        <div className="bg-white rounded-xl border border-emerald-100 p-3 shadow-sm divide-y divide-emerald-100">
+          <div className="pb-2">
+            <p className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider leading-tight">
+              2 · En caja
+            </p>
+            <p className="text-lg font-bold text-slate-900 tabular-nums mt-1">
+              {pagadosCaja.length} pago{pagadosCaja.length !== 1 ? 's' : ''} en caja
+            </p>
+            <p className="text-base font-bold text-sky-700 tabular-nums">
+              {formatCOP(totalCaja)}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Dinero recibido este mes
+            </p>
+          </div>
+
+          <div className="py-2 space-y-2">
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">De ese total</p>
+            <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-2.5 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Cobro del mes</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Membresías de este mes</p>
+                </div>
+                <p className="text-sm font-bold text-emerald-700 tabular-nums">{formatCOP(totalPag)}</p>
+              </div>
+            </div>
+            <div className={`rounded-lg border px-2.5 py-2 ${
+              totalAdelantadoRecibido > 0 ? 'bg-sky-50 border-sky-100' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${totalAdelantadoRecibido > 0 ? 'text-sky-700' : 'text-slate-500'}`}>
+                    Adelantos recibidos
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Meses futuros · suman a caja</p>
+                </div>
+                <p className={`text-sm font-bold tabular-nums ${totalAdelantadoRecibido > 0 ? 'text-sky-800' : 'text-slate-500'}`}>
+                  {formatCOP(totalAdelantadoRecibido)}
+                </p>
+              </div>
               <p className="text-[10px] text-slate-400 mt-1">
-                {participacionAliados.cantidad} cartera{participacionAliados.cantidad !== 1 ? 's' : ''} · {participacionAliados.detalle.length} aliado{participacionAliados.detalle.length !== 1 ? 's' : ''}
+                {pagadosConAdelanto.length} pago{pagadosConAdelanto.length !== 1 ? 's' : ''} con adelanto
               </p>
             </div>
-            <div className="min-w-0 pl-2">
-              <p className="text-[10px] text-indigo-700 font-bold uppercase tracking-wider leading-tight">Facturado aliados</p>
-              <p className="text-base font-bold text-indigo-800 tabular-nums mt-1">{formatCOP(facturadoAliados.total)}</p>
+            <p className="text-[10px] text-slate-400 tabular-nums text-right">
+              {formatCOP(totalPag)} + {formatCOP(totalAdelantadoRecibido)} = {formatCOP(totalCaja)}
+            </p>
+          </div>
+
+          <div className="pt-2">
+            <p className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider leading-tight">
+              En caja − aliados
+            </p>
+            <p className="text-base font-bold text-emerald-700 tabular-nums mt-1">{formatCOP(cajaSinAliados)}</p>
+            <p className="text-[10px] text-slate-400 mt-1 tabular-nums">
+              {formatCOP(totalCaja)} − {formatCOP(comisionDentroDeCaja)} · solo este mes
+            </p>
+          </div>
+        </div>
+
+        {/* 3 · Referidos */}
+        <div className="bg-white rounded-xl border border-sky-100 p-3 shadow-sm divide-y divide-sky-100">
+          <div className="pb-2">
+            <p className="text-[10px] text-sky-800 font-bold uppercase tracking-wider leading-tight">
+              3 · Referidos de {MESES[mesSel - 1]}
+            </p>
+            <p className="text-lg font-bold text-slate-900 tabular-nums mt-1">
+              {referidosMesActual.referidos} referido{referidosMesActual.referidos !== 1 ? 's' : ''} · {referidosMesActual.carteras} cartera{referidosMesActual.carteras !== 1 ? 's' : ''}
+            </p>
+            <p className="text-base font-bold text-sky-800 tabular-nums">
+              {formatCOP(referidosMesActual.total)}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Todas las carteras activas con aliado · {referidosMesActual.aliados} aliado{referidosMesActual.aliados !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          <div className="py-2 space-y-2">
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">De ese total</p>
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-2.5 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[10px] text-indigo-700 font-bold uppercase tracking-wider">Facturado</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Cliente ya pagó</p>
+                </div>
+                <p className="text-sm font-bold text-indigo-800 tabular-nums">{formatCOP(referidosMesActual.facturado)}</p>
+              </div>
               <p className="text-[10px] text-slate-400 mt-1">
                 {facturadoAliados.cantidad} pago{facturadoAliados.cantidad !== 1 ? 's' : ''} · {facturadoAliados.detalle.length} aliado{facturadoAliados.detalle.length !== 1 ? 's' : ''}
               </p>
             </div>
-          </div>
-          <div className="rounded-xl border border-slate-200 p-3 grid grid-cols-2 divide-x divide-slate-200 gap-3 bg-white shadow-sm">
-            <div className="min-w-0 pr-1">
-              <p className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${totalAdelantadoRecibido > 0 ? 'text-sky-700' : 'text-slate-500'}`}>Adelantos recibidos</p>
-              <p className={`text-base font-bold tabular-nums mt-1 ${totalAdelantadoRecibido > 0 ? 'text-sky-800' : 'text-slate-500'}`}>
-                {formatCOP(totalAdelantadoRecibido)}
+            <div className="rounded-lg bg-sky-50 border border-sky-100 px-2.5 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[10px] text-sky-700 font-bold uppercase tracking-wider">Por cobrar</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Cliente aún no paga</p>
+                </div>
+                <p className="text-sm font-bold text-sky-800 tabular-nums">{formatCOP(referidosMesActual.porCobrar)}</p>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {participacionAliados.cantidad} cartera{participacionAliados.cantidad !== 1 ? 's' : ''} · {participacionAliados.detalle.length} aliado{participacionAliados.detalle.length !== 1 ? 's' : ''}
               </p>
-              <p className={`text-[10px] mt-1 ${totalAdelantadoRecibido > 0 ? 'text-sky-600/90' : 'text-slate-400'}`}>
-                {pagadosConAdelanto.length} pago{pagadosConAdelanto.length !== 1 ? 's' : ''}
-              </p>
-              <p className="text-[10px] text-slate-400">Suma a caja · meses futuros</p>
             </div>
-            <div className="min-w-0 pl-2">
-              <p className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${pagadosCortesia.length > 0 ? 'text-violet-700' : 'text-slate-500'}`}>Cortesías</p>
-              <p className={`text-base font-bold tabular-nums mt-1 ${pagadosCortesia.length > 0 ? 'text-violet-800 line-through decoration-violet-400/60' : 'text-slate-500'}`}>
-                {formatCOP(totalCortesiaNominal)}
-              </p>
-              <p className={`text-[10px] mt-1 ${pagadosCortesia.length > 0 ? 'text-violet-600/90' : 'text-slate-400'}`}>
-                {pagadosCortesia.length} perdonada{pagadosCortesia.length !== 1 ? 's' : ''}
-              </p>
-              <p className="text-[10px] text-slate-400">$0 en caja</p>
-            </div>
+            {referidosMesActual.otros > 0 && (
+              <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">Otros</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Pagados antes, cortesías u otros</p>
+                  </div>
+                  <p className="text-sm font-bold text-slate-700 tabular-nums">{formatCOP(referidosMesActual.otros)}</p>
+                </div>
+              </div>
+            )}
+            <p className="text-[10px] text-slate-400 tabular-nums text-right">
+              {formatCOP(referidosMesActual.facturado)}
+              {' + '}
+              {formatCOP(referidosMesActual.porCobrar)}
+              {referidosMesActual.otros > 0 ? ` + ${formatCOP(referidosMesActual.otros)}` : ''}
+              {' = '}
+              {formatCOP(referidosMesActual.total)}
+            </p>
           </div>
 
-          <div className={`rounded-xl border p-3 ${pagadosAnticipados.length > 0 ? 'bg-sky-50 border-sky-200' : 'bg-slate-50 border-slate-200'}`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wider ${pagadosAnticipados.length > 0 ? 'text-sky-700' : 'text-slate-500'}`}>Pagados antes</p>
-            <p className={`text-base font-bold tabular-nums mt-1 ${pagadosAnticipados.length > 0 ? 'text-sky-800 line-through decoration-sky-400/70' : 'text-slate-500'}`}>
-              {formatCOP(totalAnticipadoNominal)}
+          <div className="pt-2">
+            <p className="text-[10px] text-amber-800 font-bold uppercase tracking-wider leading-tight">
+              Por pagar a aliados
             </p>
-            <p className={`text-[10px] mt-1 ${pagadosAnticipados.length > 0 ? 'text-sky-600/90' : 'text-slate-400'}`}>
-              {pagadosAnticipados.length} cobro{pagadosAnticipados.length !== 1 ? 's' : ''} · pagaron en otro mes
+            <p className="text-base font-bold text-amber-900 tabular-nums mt-1">{formatCOP(acumuladoAliados.total)}</p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Debemos transferir (incluye meses anteriores)
             </p>
-            <p className="text-[10px] text-slate-400">Sin caja en este mes</p>
+            <p className="text-[10px] text-slate-400">
+              {acumuladoAliados.cantidad} pago{acumuladoAliados.cantidad !== 1 ? 's' : ''} · {acumuladoAliados.detalle.length} aliado{acumuladoAliados.detalle.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+        </div>
+
+        {/* 4 · Excepciones */}
+        <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm divide-y divide-slate-100">
+          <div className="pb-2">
+            <p className="text-[10px] text-slate-700 font-bold uppercase tracking-wider leading-tight">
+              4 · Excepciones del mes
+            </p>
+            <p className="text-lg font-bold text-slate-900 tabular-nums mt-1">
+              {pagadosCortesia.length + pagadosAnticipados.length + pagadosConAdelanto.length} caso{(pagadosCortesia.length + pagadosAnticipados.length + pagadosConAdelanto.length) !== 1 ? 's' : ''}
+            </p>
+            <p className="text-base font-bold text-slate-700 tabular-nums">
+              {formatCOP(totalCortesiaNominal + totalAnticipadoNominal + totalAdelantadoRecibido)}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              No son cobro normal del mes
+            </p>
+          </div>
+
+          <div className="py-2 space-y-2">
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Detalle</p>
+            <div className={`rounded-lg border px-2.5 py-2 ${
+              totalAdelantadoRecibido > 0 ? 'bg-sky-50 border-sky-100' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${totalAdelantadoRecibido > 0 ? 'text-sky-700' : 'text-slate-500'}`}>
+                    Adelantos recibidos
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Suma a caja · meses futuros</p>
+                </div>
+                <p className={`text-sm font-bold tabular-nums ${totalAdelantadoRecibido > 0 ? 'text-sky-800' : 'text-slate-500'}`}>
+                  {formatCOP(totalAdelantadoRecibido)}
+                </p>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {pagadosConAdelanto.length} pago{pagadosConAdelanto.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <div className={`rounded-lg border px-2.5 py-2 ${
+              pagadosCortesia.length > 0 ? 'bg-violet-50 border-violet-100' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${pagadosCortesia.length > 0 ? 'text-violet-700' : 'text-slate-500'}`}>
+                    Cortesías
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">$0 en caja</p>
+                </div>
+                <p className={`text-sm font-bold tabular-nums ${
+                  pagadosCortesia.length > 0 ? 'text-violet-800 line-through decoration-violet-400/60' : 'text-slate-500'
+                }`}>
+                  {formatCOP(totalCortesiaNominal)}
+                </p>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {pagadosCortesia.length} perdonada{pagadosCortesia.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <div className={`rounded-lg border px-2.5 py-2 ${
+              pagadosAnticipados.length > 0 ? 'bg-sky-50 border-sky-200' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${pagadosAnticipados.length > 0 ? 'text-sky-700' : 'text-slate-500'}`}>
+                    Pagados antes
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Sin caja en este mes</p>
+                </div>
+                <p className={`text-sm font-bold tabular-nums ${
+                  pagadosAnticipados.length > 0 ? 'text-sky-800 line-through decoration-sky-400/70' : 'text-slate-500'
+                }`}>
+                  {formatCOP(totalAnticipadoNominal)}
+                </p>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {pagadosAnticipados.length} cobro{pagadosAnticipados.length !== 1 ? 's' : ''} · pagaron en otro mes
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -1264,34 +1509,80 @@ export default function Carteras() {
         <div className="relative">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por cartera, cliente, empresa o país..."
+            placeholder="Buscar por cartera, cliente, empresa, país o aliado..."
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition" />
         </div>
 
         <div className="flex flex-col gap-3">
-          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 w-full sm:w-auto overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setVistaTab('unificada')}
-              className={`inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
-                vistaTab === 'unificada'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <Calendar size={15} /> Vista unificada
-            </button>
-            <button
-              type="button"
-              onClick={() => setVistaTab('grupos')}
-              className={`inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
-                vistaTab === 'grupos'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <List size={15} /> Por secciones
-            </button>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 w-full sm:w-auto overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setVistaTab('unificada')}
+                className={`inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
+                  vistaTab === 'unificada'
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Calendar size={15} /> Vista unificada
+              </button>
+              <button
+                type="button"
+                onClick={() => setVistaTab('grupos')}
+                className={`inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
+                  vistaTab === 'grupos'
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <List size={15} /> Por secciones
+              </button>
+            </div>
+
+            <div className="inline-flex p-1 bg-white rounded-xl border border-slate-200 w-full sm:w-auto overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setFiltroReferido('todos')}
+                className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
+                  filtroReferido === 'todos'
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Todas
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroReferido('referidas')}
+                className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
+                  filtroReferido === 'referidas'
+                    ? 'bg-sky-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Handshake size={13} /> Referidas
+                <span className={`tabular-nums text-[10px] px-1.5 py-0.5 rounded-full ${
+                  filtroReferido === 'referidas' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {cobrosDelMes.filter(c =>
+                    cobroVisibleEnMes(c, carterasMap.get(c.carteraId), clientesMap.get(c.clienteId))
+                    && esCobroReferido(c.clienteId)
+                  ).length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroReferido('sin-referido')}
+                className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap flex-1 sm:flex-none ${
+                  filtroReferido === 'sin-referido'
+                    ? 'bg-slate-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Sin referido
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 px-3 py-2.5">
