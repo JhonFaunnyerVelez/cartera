@@ -49,14 +49,22 @@ function fechaKey(cobro: CobroMensual): string {
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
 }
 
-function sortCobros(cobros: CobroMensual[]): CobroMensual[] {
+function sortCobros(
+  cobros: CobroMensual[],
+  nombreCartera?: (cobro: CobroMensual) => string,
+  nombreCliente?: (cobro: CobroMensual) => string,
+): CobroMensual[] {
   return [...cobros].sort((a, b) => {
     const da = a.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
     const db = b.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
     if (da !== db) return da - db;
-    const cmpCartera = (a.carteraNombre || '').localeCompare(b.carteraNombre || '', 'es');
+    const na = nombreCartera?.(a) ?? a.carteraNombre ?? '';
+    const nb = nombreCartera?.(b) ?? b.carteraNombre ?? '';
+    const cmpCartera = na.localeCompare(nb, 'es');
     if (cmpCartera !== 0) return cmpCartera;
-    return (a.clienteNombre || '').localeCompare(b.clienteNombre || '', 'es');
+    const ca = nombreCliente?.(a) ?? a.clienteNombre ?? '';
+    const cb = nombreCliente?.(b) ?? b.clienteNombre ?? '';
+    return ca.localeCompare(cb, 'es');
   });
 }
 

@@ -392,10 +392,10 @@ function CobroRow({
         </div>
       </td>
 
-      {/* Cartera */}
+      {/* Cartera — nombre vivo de la cartera, no el snapshot del cobro */}
       <td className="min-w-[160px]">
         <p className="font-bold leading-tight text-slate-800">
-          {cobro.carteraNombre || 'Sin nombre'}
+          {cartera?.nombre || cobro.carteraNombre || 'Sin nombre'}
         </p>
         <div className="mt-1 flex items-center gap-2 flex-wrap">
           <DiasLabel ts={cobro.fechaVencimiento} pagado={isPagado} />
@@ -721,7 +721,7 @@ export default function Carteras() {
     });
     const idsVivos = new Set(carterasVivas.map(c => c.id));
     const reales = cobros.filter(c => idsVivos.has(c.carteraId));
-    return combinarCobrosConVirtuales(reales, carterasVivas, mesSel, anioSel);
+    return combinarCobrosConVirtuales(reales, carterasVivas, mesSel, anioSel, clientesMap);
   }, [cobros, carteras, clientesMap, mesSel, anioSel]);
 
   const esCobroReferido = (clienteId: string) => {
@@ -744,9 +744,11 @@ export default function Carteras() {
         const cartera = carterasMap.get(c.carteraId);
         const empresa = cliente?.empresa || '';
         const pais = cartera?.pais || cliente?.pais || '';
+        const nombreCartera = cartera?.nombre || c.carteraNombre || '';
+        const nombreCliente = cliente?.nombre || c.clienteNombre || '';
         const aliado = resumenParticipacion(cliente, aliados);
         const aliadoTxt = aliado ? `${aliado.aliadoCodigo} ${aliado.aliadoNombre}` : '';
-        return [c.clienteNombre, c.carteraNombre, empresa, pais, aliadoTxt].join(' ').toLowerCase().includes(search.toLowerCase());
+        return [nombreCliente, nombreCartera, empresa, pais, aliadoTxt].join(' ').toLowerCase().includes(search.toLowerCase());
       })
       .sort((a, b) => {
         const da = a.fechaVencimiento?.toDate?.()?.getTime() ?? 0;

@@ -98,7 +98,7 @@ export default function ClienteDetalle() {
   const handlePago = (cobro: CobroMensual, cartera: Cartera, isPagado: boolean) => {
     const mesActual = hoy.getMonth() + 1;
     const anioActual = hoy.getFullYear();
-    const cobroAlineado = alinearCobroConCartera(cobro, cartera, mesActual, anioActual);
+    const cobroAlineado = alinearCobroConCartera(cobro, cartera, mesActual, anioActual, cliente);
 
     if (isPagado) {
       setConfirmConfig({
@@ -137,7 +137,7 @@ export default function ClienteDetalle() {
   const handleCortesia = async (cobro: CobroMensual, cartera: Cartera) => {
     const mesActual = hoy.getMonth() + 1;
     const anioActual = hoy.getFullYear();
-    const cobroAlineado = alinearCobroConCartera(cobro, cartera, mesActual, anioActual);
+    const cobroAlineado = alinearCobroConCartera(cobro, cartera, mesActual, anioActual, cliente);
 
     setConfirmConfig({
       isOpen: true,

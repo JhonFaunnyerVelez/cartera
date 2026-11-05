@@ -1,7 +1,7 @@
 import { addDoc, collection, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { calcularFechaVencimientoCobro } from '../services/cierreMensual';
-import type { Cartera, CobroMensual } from '../types';
+import type { Cartera, Cliente, CobroMensual } from '../types';
 import { esCarteraActiva, periodoEsActualOFuturo, carteraCuentaEnMes } from './activo';
 import { esMesPasado } from './periodo';
 
@@ -15,13 +15,13 @@ function idCobroVirtual(carteraId: string): string {
   return `${VIRTUAL_COBO_PREFIX}${carteraId}`;
 }
 
-export function crearCobroVirtual(cartera: Cartera, mes: number, anio: number): CobroMensual {
+export function crearCobroVirtual(cartera: Cartera, mes: number, anio: number, cliente?: Cliente): CobroMensual {
   return {
     id: idCobroVirtual(cartera.id),
     carteraId: cartera.id,
     carteraNombre: cartera.nombre || '',
     clienteId: cartera.clienteId,
-    clienteNombre: cartera.clienteNombre || '',
+    clienteNombre: cliente?.nombre || cartera.clienteNombre || '',
     mes,
     anio,
     valorCobro: cartera.valorCartera,
@@ -32,21 +32,30 @@ export function crearCobroVirtual(cartera: Cartera, mes: number, anio: number): 
 }
 
 /**
- * Mes actual/futuro: cobros no pagados reflejan la configuración vigente de la cartera.
- * Los pagados conservan el valor histórico.
+ * Mes actual/futuro: nombres siempre al día.
+ * Valor/fecha solo se actualizan en cobros no pagados (los pagados conservan el monto histórico).
  */
 export function alinearCobroConCartera(
   cobro: CobroMensual,
   cartera: Cartera | undefined,
   mes: number,
-  anio: number
+  anio: number,
+  cliente?: Cliente,
 ): CobroMensual {
-  if (!cartera || esMesPasado(mes, anio) || cobro.estado === 'Pagado') return cobro;
+  if (!cartera || esMesPasado(mes, anio)) return cobro;
+
+  const nombres = {
+    carteraNombre: cartera.nombre || cobro.carteraNombre,
+    clienteNombre: cliente?.nombre || cartera.clienteNombre || cobro.clienteNombre,
+  };
+
+  if (cobro.estado === 'Pagado') {
+    return { ...cobro, ...nombres };
+  }
 
   return {
     ...cobro,
-    carteraNombre: cartera.nombre || cobro.carteraNombre,
-    clienteNombre: cartera.clienteNombre || cobro.clienteNombre,
+    ...nombres,
     valorCobro: cartera.valorCartera,
     fechaVencimiento:
       calcularFechaVencimientoCobro(cartera.fechaVencimientoMensual, mes, anio) ?? cobro.fechaVencimiento,
@@ -87,12 +96,22 @@ export function combinarCobrosConVirtuales(
   cobrosReales: CobroMensual[],
   carteras: Cartera[],
   mes: number,
-  anio: number
+  anio: number,
+  clientes?: Map<string, Cliente> | Cliente[],
 ): CobroMensual[] {
   const mesPasado = esMesPasado(mes, anio);
   const carterasMap = new Map(carteras.map(c => [c.id, c]));
+  const clientesMap = clientes instanceof Map
+    ? clientes
+    : new Map((clientes || []).map(c => [c.id, c]));
   const alineados = cobrosReales.map(c =>
-    alinearCobroConCartera(c, carterasMap.get(c.carteraId), mes, anio)
+    alinearCobroConCartera(
+      c,
+      carterasMap.get(c.carteraId),
+      mes,
+      anio,
+      clientesMap.get(c.clienteId) || clientesMap.get(carterasMap.get(c.carteraId)?.clienteId || ''),
+    )
   );
   const carterasConCobro = new Set(alineados.map(c => c.carteraId));
   const virtuales: CobroMensual[] = [];
@@ -101,7 +120,7 @@ export function combinarCobrosConVirtuales(
     if (carterasConCobro.has(cartera.id)) continue;
     if (!esCarteraActiva(cartera)) continue;
     if (!carteraCuentaEnMes(cartera, mes, anio)) continue;
-    const virtual = crearCobroVirtual(cartera, mes, anio);
+    const virtual = crearCobroVirtual(cartera, mes, anio, clientesMap.get(cartera.clienteId));
     virtuales.push(mesPasado ? { ...virtual, estado: 'Mora' } : virtual);
   }
 
