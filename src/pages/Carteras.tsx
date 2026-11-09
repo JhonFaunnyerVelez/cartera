@@ -20,6 +20,7 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import CarteraForm from '../components/carteras/CarteraForm';
 import PagoAdelantoModal from '../components/carteras/PagoAdelantoModal';
 import RegistroPagoModal from '../components/carteras/RegistroPagoModal';
+import ActivacionesMesChart from '../components/carteras/ActivacionesMesChart';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { carteraCuentaEnMes, cobroVisibleEnMes, esCarteraActiva, esClienteActivo } from '../utils/activo';
 import { esMesPasado } from '../utils/periodo';
@@ -653,6 +654,8 @@ export default function Carteras() {
 
   const [search, setSearch] = useState('');
   const [filtroReferido, setFiltroReferido] = useState<'todos' | 'referidas' | 'sin-referido'>('todos');
+  const [filtroPais, setFiltroPais] = useState<string | null>(null);
+  const [mostrarGraficaActivaciones, setMostrarGraficaActivaciones] = useState(false);
   const [filtros, setFiltros] = useState<Record<FiltroCobro, boolean>>(FILTROS_VACIOS);
   const [modalOpen, setModalOpen] = useState(false);
   const [editCartera, setEditCartera] = useState<Cartera | null>(null);
@@ -697,22 +700,68 @@ export default function Carteras() {
     let creadasEsteMes = 0;
 
     for (const cartera of carteras) {
-      const creada = cartera.fechaCreacion?.toDate?.();
-      if (creada && creada.getMonth() + 1 === mesSel && creada.getFullYear() === anioSel) {
+      const cliente = clientesMap.get(cartera.clienteId);
+      const pais = cartera.pais?.trim() || cliente?.pais?.trim() || 'Sin país';
+      const activada = cartera.fechaActivacion?.toDate?.() || cartera.fechaCreacion?.toDate?.();
+      if (
+        activada &&
+        activada.getMonth() + 1 === mesSel &&
+        activada.getFullYear() === anioSel &&
+        (!filtroPais || pais === filtroPais)
+      ) {
         creadasEsteMes += 1;
       }
 
-      const cliente = clientesMap.get(cartera.clienteId);
       if (!cliente || !esCarteraActiva(cartera) || !esClienteActivo(cliente)) continue;
-      const pais = cartera.pais?.trim() || cliente.pais?.trim() || 'Sin país';
       porPais.set(pais, (porPais.get(pais) ?? 0) + 1);
     }
 
+    const totalActivas = [...porPais.values()].reduce((s, n) => s + n, 0);
     return {
       creadasEsteMes,
+      totalActivas,
       porPais: [...porPais.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es')),
     };
-  }, [carteras, clientesMap, mesSel, anioSel]);
+  }, [carteras, clientesMap, mesSel, anioSel, filtroPais]);
+
+  const activacionesPorDia = useMemo(() => {
+    const diasEnMes = new Date(anioSel, mesSel, 0).getDate();
+    const porDia = Array.from({ length: diasEnMes }, () => 0);
+
+    for (const cartera of carteras) {
+      const cliente = clientesMap.get(cartera.clienteId);
+      if (!cliente) continue;
+      const pais = cartera.pais?.trim() || cliente.pais?.trim() || 'Sin país';
+      if (filtroPais && pais !== filtroPais) continue;
+
+      const fecha = cartera.fechaActivacion?.toDate?.() || cartera.fechaCreacion?.toDate?.();
+      if (!fecha) continue;
+      if (fecha.getMonth() + 1 !== mesSel || fecha.getFullYear() !== anioSel) continue;
+      const dia = fecha.getDate();
+      if (dia >= 1 && dia <= diasEnMes) porDia[dia - 1] += 1;
+    }
+
+    let acum = 0;
+    const puntos = porDia.map((activadas, i) => {
+      acum += activadas;
+      return { dia: i + 1, activadas, acumulado: acum };
+    });
+
+    const hoy = new Date();
+    const esMesVistaActual = mesSel === hoy.getMonth() + 1 && anioSel === hoy.getFullYear();
+    const esMesVistaFuturo = anioSel > hoy.getFullYear() || (anioSel === hoy.getFullYear() && mesSel > hoy.getMonth() + 1);
+    // Mismo día del mes que hoy (p. ej. día 9) también en meses anteriores, para comparar.
+    const diaHoy = Math.min(hoy.getDate(), diasEnMes);
+    const diaLimiteAcumulado = esMesVistaFuturo ? 0 : diaHoy;
+
+    return { puntos, diaLimiteAcumulado, diaHoy, esMesVistaActual };
+  }, [carteras, clientesMap, mesSel, anioSel, filtroPais]);
+
+  const paisDeCobro = (cobro: CobroMensual) => {
+    const cartera = carterasMap.get(cobro.carteraId);
+    const cliente = clientesMap.get(cobro.clienteId);
+    return cartera?.pais?.trim() || cliente?.pais?.trim() || 'Sin país';
+  };
 
   const cobrosDelMes = useMemo(() => {
     const carterasVivas = carteras.filter(cartera => {
@@ -733,6 +782,10 @@ export default function Carteras() {
   const cobrosOrdenados = useMemo(() => {
     return [...cobrosDelMes]
       .filter(c => cobroVisibleEnMes(c, carterasMap.get(c.carteraId), clientesMap.get(c.clienteId)))
+      .filter(c => {
+        if (!filtroPais) return true;
+        return paisDeCobro(c) === filtroPais;
+      })
       .filter(c => {
         if (filtroReferido === 'referidas') return esCobroReferido(c.clienteId);
         if (filtroReferido === 'sin-referido') return !esCobroReferido(c.clienteId);
@@ -755,7 +808,7 @@ export default function Carteras() {
         const db = b.fechaVencimiento?.toDate?.()?.getTime() ?? 0;
         return da - db;
       });
-  }, [cobrosDelMes, search, carterasMap, clientesMap, filtroReferido, aliados]);
+  }, [cobrosDelMes, search, carterasMap, clientesMap, filtroReferido, filtroPais, aliados]);
 
   const conteoFiltros = useMemo(() => {
     const conteo: Record<FiltroCobro, number> = {
@@ -1486,24 +1539,97 @@ export default function Carteras() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <div className="bg-white rounded-xl border border-indigo-200 px-3 py-2 shadow-sm min-w-[8.5rem]">
-          <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider leading-tight">
-            Activas en {MESES[mesSel - 1]}
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => setMostrarGraficaActivaciones(v => !v)}
+          className={`rounded-xl px-3 py-2 shadow-sm min-w-[8.5rem] text-left transition border ${
+            mostrarGraficaActivaciones
+              ? 'bg-indigo-600 border-indigo-600 text-white'
+              : 'bg-white border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50/50'
+          }`}
+          title={mostrarGraficaActivaciones ? 'Ocultar gráfica' : 'Ver gráfica de activaciones'}
+        >
+          <p className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${
+            mostrarGraficaActivaciones ? 'text-indigo-100' : 'text-indigo-600'
+          }`}>
+            Activadas en {MESES[mesSel - 1]}
           </p>
-          <p className="text-base font-bold text-indigo-800 tabular-nums mt-0.5">{resumenCarteras.creadasEsteMes}</p>
-          <p className="text-[10px] text-slate-400">carteras creadas en {anioSel}</p>
-        </div>
-        {resumenCarteras.porPais.map(([pais, cantidad]) => (
-          <div key={pais} className="bg-white rounded-xl border border-slate-200 px-3 py-2 shadow-sm min-w-[7rem]">
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight flex items-center gap-1">
-              <Globe size={10} className="text-slate-400 shrink-0" />
-              <span className="truncate">{pais}</span>
+          <p className={`text-base font-bold tabular-nums mt-0.5 ${
+            mostrarGraficaActivaciones ? 'text-white' : 'text-indigo-800'
+          }`}>
+            {resumenCarteras.creadasEsteMes}
+          </p>
+          <p className={`text-[10px] ${mostrarGraficaActivaciones ? 'text-indigo-100' : 'text-slate-400'}`}>
+            {mostrarGraficaActivaciones ? 'Ocultar gráfica' : 'Ver gráfica'}
+            {filtroPais ? ` · ${filtroPais}` : ''}
+          </p>
+        </button>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setFiltroPais(null)}
+            className={`rounded-xl px-3 py-2 shadow-sm min-w-[7rem] text-left transition border ${
+              filtroPais == null
+                ? 'bg-indigo-600 border-indigo-600 text-white'
+                : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40'
+            }`}
+          >
+            <p className={`text-[10px] font-bold uppercase tracking-wider leading-tight flex items-center gap-1 ${
+              filtroPais == null ? 'text-indigo-100' : 'text-slate-500'
+            }`}>
+              <Globe size={10} className="shrink-0" />
+              <span>Todas</span>
             </p>
-            <p className="text-base font-bold text-slate-800 tabular-nums mt-0.5">{cantidad}</p>
-            <p className="text-[10px] text-slate-400">cartera{cantidad !== 1 ? 's' : ''}</p>
-          </div>
-        ))}
+            <p className={`text-base font-bold tabular-nums mt-0.5 ${filtroPais == null ? 'text-white' : 'text-slate-800'}`}>
+              {resumenCarteras.totalActivas}
+            </p>
+            <p className={`text-[10px] ${filtroPais == null ? 'text-indigo-100' : 'text-slate-400'}`}>
+              cartera{resumenCarteras.totalActivas !== 1 ? 's' : ''}
+            </p>
+          </button>
+
+          {resumenCarteras.porPais.map(([pais, cantidad]) => {
+            const activo = filtroPais === pais;
+            return (
+              <button
+                key={pais}
+                type="button"
+                onClick={() => setFiltroPais(activo ? null : pais)}
+                className={`rounded-xl px-3 py-2 shadow-sm min-w-[7rem] text-left transition border ${
+                  activo
+                    ? 'bg-sky-600 border-sky-600 text-white'
+                    : 'bg-white border-slate-200 hover:border-sky-300 hover:bg-sky-50/40'
+                }`}
+              >
+                <p className={`text-[10px] font-bold uppercase tracking-wider leading-tight flex items-center gap-1 ${
+                  activo ? 'text-sky-100' : 'text-slate-500'
+                }`}>
+                  <Globe size={10} className="shrink-0" />
+                  <span className="truncate">{pais}</span>
+                </p>
+                <p className={`text-base font-bold tabular-nums mt-0.5 ${activo ? 'text-white' : 'text-slate-800'}`}>
+                  {cantidad}
+                </p>
+                <p className={`text-[10px] ${activo ? 'text-sky-100' : 'text-slate-400'}`}>
+                  cartera{cantidad !== 1 ? 's' : ''}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+
+        {mostrarGraficaActivaciones && (
+          <ActivacionesMesChart
+            puntos={activacionesPorDia.puntos}
+            mesLabel={MESES[mesSel - 1]}
+            anio={anioSel}
+            diaLimiteAcumulado={activacionesPorDia.diaLimiteAcumulado}
+            diaHoy={activacionesPorDia.diaHoy}
+            esMesVistaActual={activacionesPorDia.esMesVistaActual}
+          />
+        )}
       </div>
 
       {/* Buscador + tabs de vista */}
