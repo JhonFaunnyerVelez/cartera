@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, Loader2, CheckCircle2 } from 'lucide-react';
-import { editarPago, mesesRegistradosDelPago, registrarPagoAdelantado } from '../../services/pagoAdelantado';
+import {
+  editarPago,
+  mesesAbonoAdicional,
+  mesesRegistradosDelPago,
+  registrarAbonoAdicional,
+  registrarPagoAdelantado,
+} from '../../services/pagoAdelantado';
 import { useClientes } from '../../hooks/useClientes';
 import { useAliados } from '../../hooks/useAliados';
 import type { Cartera, CobroMensual } from '../../types';
@@ -15,12 +21,29 @@ interface Props {
   mesActual: number;
   anioActual: number;
   cobro?: CobroMensual;
+  /** Abono nuevo en un mes ya pagado antes: suma a caja de este mes. */
+  abonoAdicional?: boolean;
   onClose: () => void;
+  /** Tras guardar con éxito (cierra el modal desde el padre y muestra aviso). */
+  onSuccess?: (mensaje: string) => void;
 }
 
-export default function PagoAdelantoModal({ cartera, mesActual, anioActual, cobro, onClose }: Props) {
-  const editando = !!cobro;
-  const mesesIniciales = cobro ? mesesRegistradosDelPago(cobro) : 2;
+export default function PagoAdelantoModal({
+  cartera,
+  mesActual,
+  anioActual,
+  cobro,
+  abonoAdicional = false,
+  onClose,
+  onSuccess,
+}: Props) {
+  const esAbono = abonoAdicional && !!cobro;
+  const editando = !!cobro && !esAbono;
+  const mesesIniciales = esAbono
+    ? Math.max(1, mesesAbonoAdicional(cobro!) || 1)
+    : cobro
+      ? mesesRegistradosDelPago(cobro)
+      : 2;
   const [meses, setMeses] = useState(mesesIniciales);
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<string[] | null>(null);
@@ -29,43 +52,73 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, cobr
   const { aliados } = useAliados();
 
   useEffect(() => {
-    setMeses(cobro ? mesesRegistradosDelPago(cobro) : 2);
+    setMeses(
+      esAbono
+        ? Math.max(1, mesesAbonoAdicional(cobro!) || 1)
+        : cobro
+          ? mesesRegistradosDelPago(cobro)
+          : 2,
+    );
     setResultado(null);
     setError('');
-  }, [cobro?.id, cartera.id]);
+  }, [cobro?.id, cartera.id, esAbono]);
 
   const totalAPagar = cartera.valorCartera * meses;
   const cliente = clientes.find(c => c.id === cartera.clienteId);
   const aliado = aliados.find(a => a.id === cliente?.aliadoId);
   const porcentaje = cliente?.porcentajeParticipacion || 0;
   const comisionMes = aliado && porcentaje > 0 ? calcularParticipacion(cartera.valorCartera, porcentaje) : 0;
+  const yaTeníaAbono = esAbono && mesesAbonoAdicional(cobro!) > 0;
 
   const handleConfirm = async () => {
     setLoading(true);
     setError('');
     try {
-      const res = cobro
-        ? await editarPago(cartera, cobro, meses)
-        : await registrarPagoAdelantado(cartera, mesActual, anioActual, meses);
+      const res = esAbono
+        ? await registrarAbonoAdicional(cartera, cobro!, meses)
+        : cobro
+          ? await editarPago(cartera, cobro, meses)
+          : await registrarPagoAdelantado(cartera, mesActual, anioActual, meses);
       setResultado(res.periodos);
+      if (onSuccess) {
+        const msg = esAbono
+          ? `Abono de ${formatCOP(totalAPagar)} registrado. Aparece en «Cobrado en caja» (la cuota del mes sigue como pagado antes).`
+          : editando
+            ? `Pago actualizado: ${meses} ${meses === 1 ? 'cuota' : 'cuotas'} · ${formatCOP(totalAPagar)}.`
+            : `Pago adelantado registrado: ${meses} ${meses === 1 ? 'mes' : 'meses'} · ${formatCOP(totalAPagar)}.`;
+        onSuccess(msg);
+      }
     } catch (e: any) {
-      setError(e.message || (editando ? 'Error al editar el pago.' : 'Error al registrar el pago.'));
+      setError(
+        e.message
+        || (esAbono
+          ? 'Error al registrar el abono adicional.'
+          : editando
+            ? 'Error al editar el pago.'
+            : 'Error al registrar el pago.'),
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const tituloExito = esAbono
+    ? (yaTeníaAbono ? '¡Abono actualizado!' : '¡Abono registrado!')
+    : editando
+      ? '¡Pago actualizado!'
+      : '¡Pago registrado!';
+
   return (
     <div className="space-y-5">
       {resultado ? (
-        /* ── Éxito ── */
         <div className="text-center py-4">
           <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
             <CheckCircle2 size={28} className="text-emerald-600" />
           </div>
-          <h3 className="font-bold text-slate-800 text-lg mb-1">{editando ? '¡Pago actualizado!' : '¡Pago registrado!'}</h3>
+          <h3 className="font-bold text-slate-800 text-lg mb-1">{tituloExito}</h3>
           <p className="text-slate-500 text-sm mb-4">
-            {formatCOP(totalAPagar)} {editando ? 'quedan' : 'pagados'} por {meses} {meses === 1 ? 'mes' : 'meses'}
+            {formatCOP(totalAPagar)} {esAbono ? 'entran a caja este mes por' : editando ? 'quedan' : 'pagados por'}{' '}
+            {meses} {meses === 1 ? 'mes' : 'meses'}
           </p>
           <div className="flex flex-wrap justify-center gap-2 mb-6">
             {resultado.map((p) => (
@@ -80,16 +133,20 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, cobr
           </button>
         </div>
       ) : (
-        /* ── Formulario ── */
         <>
-          {/* Info de la cartera */}
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
             <p className="font-semibold text-indigo-800 text-sm">{cartera.nombre}</p>
             <p className="text-indigo-600 text-xs mt-0.5">{cartera.clienteNombre} · {formatCOP(cartera.valorCartera)}/mes</p>
           </div>
 
-          {/* Selector de meses */}
           <div>
+            {esAbono && (
+              <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-900 mb-3">
+                Este mes ya estaba pagado antes. El abono nuevo suma a la <strong>caja de este mes</strong> y cubre
+                cuotas futuras pendientes
+                {yaTeníaAbono ? ` (ahora tiene ${mesesAbonoAdicional(cobro!)}).` : '.'}
+              </div>
+            )}
             {editando && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 mb-3">
                 Este pago ya está registrado ({mesesIniciales} {mesesIniciales === 1 ? 'cuota' : 'cuotas'}).
@@ -98,9 +155,12 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, cobr
             )}
 
             <label className="block text-sm font-medium text-slate-700 mb-2">
-              {editando ? '¿Cuántas cuotas quedaron pagadas?' : '¿Cuántos meses paga por adelantado?'}
+              {esAbono
+                ? '¿Cuántas cuotas adicionales paga ahora?'
+                : editando
+                  ? '¿Cuántas cuotas quedaron pagadas?'
+                  : '¿Cuántos meses paga por adelantado?'}
             </label>
-            {/* Botones rápidos */}
             <div className="grid grid-cols-4 gap-2 mb-3">
               {[1, 2, 3, 6].map((n) => (
                 <button key={n} onClick={() => setMeses(n)}
@@ -113,7 +173,6 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, cobr
                 </button>
               ))}
             </div>
-            {/* Input manual */}
             <div className="flex items-center gap-2">
               <CalendarDays size={16} className="text-slate-400" />
               <input
@@ -125,18 +184,19 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, cobr
             </div>
           </div>
 
-          {/* Resumen */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Valor por mes</span>
               <span className="font-semibold text-slate-800">{formatCOP(cartera.valorCartera)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Meses a pagar</span>
+              <span className="text-slate-500">{esAbono ? 'Cuotas adicionales' : 'Meses a pagar'}</span>
               <span className="font-semibold text-slate-800">{meses}</span>
             </div>
             <div className="border-t border-slate-200 pt-2 flex justify-between">
-              <span className="font-semibold text-slate-700">{editando ? 'Total del pago' : 'Total a registrar'}</span>
+              <span className="font-semibold text-slate-700">
+                {esAbono ? 'Entra a caja hoy' : editando ? 'Total del pago' : 'Total a registrar'}
+              </span>
               <span className="font-bold text-emerald-600 text-lg">{formatCOP(totalAPagar)}</span>
             </div>
             {comisionMes > 0 && aliado && (
@@ -160,10 +220,12 @@ export default function PagoAdelantoModal({ cartera, mesActual, anioActual, cobr
             <button onClick={handleConfirm} disabled={loading}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition disabled:opacity-60">
               {loading
-                ? <><Loader2 size={15} className="animate-spin" /> {editando ? 'Guardando...' : 'Registrando...'}</>
-                : editando
-                  ? `Guardar ${meses} ${meses === 1 ? 'cuota' : 'cuotas'}`
-                  : `Registrar pago de ${meses} ${meses === 1 ? 'mes' : 'meses'}`}
+                ? <><Loader2 size={15} className="animate-spin" /> {esAbono || editando ? 'Guardando...' : 'Registrando...'}</>
+                : esAbono
+                  ? `${yaTeníaAbono ? 'Guardar' : 'Registrar'} ${meses} ${meses === 1 ? 'cuota' : 'cuotas'}`
+                  : editando
+                    ? `Guardar ${meses} ${meses === 1 ? 'cuota' : 'cuotas'}`
+                    : `Registrar pago de ${meses} ${meses === 1 ? 'mes' : 'meses'}`}
             </button>
           </div>
         </>

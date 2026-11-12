@@ -88,8 +88,10 @@ export default function Recaudos() {
 
   const totalRecaudado = useMemo(() => {
     return filtered.reduce((acc, r) => {
-      const realValor = r.esCortesia ? 0 : r.valorCobro;
-      return acc + realValor + (r.montoAdelantado || 0);
+      // Mes pagado antes: la cuota no es caja de ese cobro; solo cuenta un abono adicional.
+      if (r.esCortesia) return acc;
+      if (r.esPagoAdelantado) return acc + (r.montoAdelantado || 0);
+      return acc + r.valorCobro + (r.montoAdelantado || 0);
     }, 0);
   }, [filtered]);
 
@@ -205,7 +207,9 @@ export default function Recaudos() {
                         />
                       </td>
                       <td>
-                        {r.esPagoAdelantado ? (
+                        {r.esPagoAdelantado && isAdelanto ? (
+                          <BadgeRecibioAdelanto />
+                        ) : r.esPagoAdelantado ? (
                           <BadgePagoAnticipado mesRecibido={etiquetaMesRecibido(r)} />
                         ) : isAdelanto ? (
                           <BadgeRecibioAdelanto />

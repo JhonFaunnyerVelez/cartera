@@ -19,7 +19,8 @@ export function tieneAdelantoRecibido(cobro: CobroMensual): boolean {
 /** Suma a la caja del mes que estás viendo. */
 export function sumaACajaMes(cobro: CobroMensual): number {
   if (cobro.estado !== 'Pagado' || cobro.esCortesia) return 0;
-  if (esPagoAnticipado(cobro)) return 0;
+  // Mes pagado antes: la cuota no entra a caja; un abono adicional sí.
+  if (esPagoAnticipado(cobro)) return cobro.montoAdelantado || 0;
   return cobro.valorCobro + (cobro.montoAdelantado || 0);
 }
 
@@ -35,8 +36,8 @@ export function clasesFilaCortesia(cobro: CobroMensual): string {
 
 export function clasesFilaAdelanto(cobro: CobroMensual): string {
   if (cobro.esCortesia) return clasesFilaCortesia(cobro);
-  if (esPagoAnticipado(cobro)) return 'border-l-4 border-l-sky-500 bg-sky-50/80';
   if (tieneAdelantoRecibido(cobro)) return 'border-l-4 border-l-emerald-500';
+  if (esPagoAnticipado(cobro)) return 'border-l-4 border-l-sky-500 bg-sky-50/80';
   return '';
 }
 
@@ -105,6 +106,7 @@ export function ValorConAdelanto({
         <span className="text-[10px] font-semibold text-sky-700">
           Sin caja{mesRecibido ? ` · pagado en ${mesRecibido}` : ''}
         </span>
+        {extra > 0 && <MontoAdelantadoExtra monto={extra} alineacion={alineacion} />}
       </div>
     );
   }

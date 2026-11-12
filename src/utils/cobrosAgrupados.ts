@@ -30,8 +30,9 @@ export function calcularEstadoTotalGrupo(cobros: CobroMensual[]): EstadoTotalGru
   if (estados.some(e => e === 'vencido')) return 'vencido';
   if (estados.every(e => e === 'pagado')) {
     if (cobros.every(c => c.esCortesia)) return 'cortesia';
+    if (cobros.some(c => tieneAdelantoRecibido(c))) return 'adelanto';
     if (cobros.every(c => esPagoAnticipado(c))) return 'pagado-antes';
-    if (cobros.some(c => esPagoAnticipado(c) || tieneAdelantoRecibido(c))) return 'adelanto';
+    if (cobros.some(c => esPagoAnticipado(c))) return 'adelanto';
     return 'pagado';
   }
   return 'al-dia';

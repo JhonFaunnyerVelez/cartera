@@ -63,7 +63,7 @@ export interface CobroMensual {
   esPagoAdelantado?: boolean;   // true cuando este cobro fue pagado en un mes anterior
   mesRecibido?: number;          // mes en que se recibió el dinero realmente
   anioRecibido?: number;         // año en que se recibió el dinero realmente
-  montoAdelantado?: number;      // dinero extra recibido HOY por meses futuros (se guarda en el cobro del mes actual)
+  montoAdelantado?: number;      // dinero extra recibido HOY por meses futuros (caja de este mes; también en abono adicional sobre mes pagado antes)
   mesesAdelantados?: number;     // total de meses pagados en la operación (incluye el mes actual)
   cobrosAdelantadosIds?: string[]; // IDs de los cobros futuros generados para poder revertirlos
   esCortesia?: boolean;         // true si el pago fue perdonado ($0 recaudados)

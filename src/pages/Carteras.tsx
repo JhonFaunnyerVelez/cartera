@@ -35,8 +35,10 @@ import {
   clasesFilaAdelanto,
   etiquetaMesRecibido,
   esPagoAnticipado,
+  sumaACajaMes,
   tieneAdelantoRecibido,
 } from '../components/carteras/AdelantoIndicators';
+import { revertirAbonoAdicional } from '../services/pagoAdelantado';
 import { agruparCobrosPorDiaYEmpresa, getEstadoVisualCobro, type EstadoTotalGrupo } from '../utils/cobrosAgrupados';
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -64,8 +66,9 @@ const FILTROS_UI: { id: FiltroCobro; label: string; swatch: string; swatch2?: st
 
 function tipoFiltroCobro(cobro: CobroMensual): FiltroCobro {
   if (cobro.esCortesia && cobro.estado === 'Pagado') return 'cortesia';
-  if (esPagoAnticipado(cobro) && cobro.estado === 'Pagado') return 'pagado-antes';
+  // Abono adicional en mes pagado antes: cuenta como adelanto (entra a caja hoy)
   if (tieneAdelantoRecibido(cobro) && cobro.estado === 'Pagado') return 'adelanto';
+  if (esPagoAnticipado(cobro) && cobro.estado === 'Pagado') return 'pagado-antes';
   if (cobro.estado === 'Pagado') return 'pagado';
   return getEstadoVisualCobro(cobro) === 'vencido' ? 'vencido' : 'al-dia';
 }
@@ -128,12 +131,13 @@ function clasesFilaCobro(cobro: CobroMensual, vistaUnificada: boolean): string {
     return `transition group border-b border-violet-300 bg-violet-100/80 ${extras}`;
   }
 
-  if (esPagoAnticipado(cobro) && cobro.estado === 'Pagado') {
-    return `transition group border-b border-sky-300 bg-sky-100/80 border-l-4 border-l-sky-500`;
+  // Abono adicional sobre mes pagado antes: prioriza estilo de caja (entra dinero hoy)
+  if (tieneAdelantoRecibido(cobro) && cobro.estado === 'Pagado') {
+    return `transition group border-b border-emerald-300 bg-emerald-100/80 border-l-4 border-l-emerald-500`;
   }
 
-  if (tieneAdelantoRecibido(cobro) && !esPagoAnticipado(cobro) && cobro.estado === 'Pagado') {
-    return `transition group border-b border-emerald-300 bg-emerald-100/80 border-l-4 border-l-emerald-500`;
+  if (esPagoAnticipado(cobro) && cobro.estado === 'Pagado') {
+    return `transition group border-b border-sky-300 bg-sky-100/80 border-l-4 border-l-sky-500`;
   }
 
   if (!vistaUnificada) {
@@ -149,11 +153,11 @@ function clasesFilaCobro(cobro: CobroMensual, vistaUnificada: boolean): string {
   }
   const est = getEstadoVisualCobro(cobro);
   if (est === 'pagado') {
-    if (esPagoAnticipado(cobro)) {
-      return `transition group border-b border-sky-300 bg-sky-100/80 border-l-4 border-l-sky-500`;
-    }
     if (tieneAdelantoRecibido(cobro)) {
       return `transition group border-b border-emerald-300 bg-emerald-100/80 border-l-4 border-l-emerald-500`;
+    }
+    if (esPagoAnticipado(cobro)) {
+      return `transition group border-b border-sky-300 bg-sky-100/80 border-l-4 border-l-sky-500`;
     }
     return `transition group border-b border-emerald-300 bg-emerald-100/80 ${bordeVerde} ${extras}`;
   }
@@ -175,7 +179,7 @@ function DiasLabel({ ts, pagado }: { ts: any; pagado: boolean }) {
 
 function MenuFilaCobro({
   cobro, cartera, isPagado, isLoading,
-  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onToggleActiva,
+  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onAbonoAdicional, onToggleActiva,
 }: {
   cobro: CobroMensual;
   cartera?: Cartera;
@@ -187,6 +191,7 @@ function MenuFilaCobro({
   onDelete: (id: string) => void;
   onPagoAdelanto: (c: Cartera) => void;
   onEditarPago: (cobro: CobroMensual, cartera: Cartera) => void;
+  onAbonoAdicional: (cobro: CobroMensual, cartera: Cartera) => void;
   onToggleActiva: (c: Cartera) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
@@ -196,6 +201,8 @@ function MenuFilaCobro({
   const activa = cartera ? esCarteraActiva(cartera) : false;
   const puedeCobrar = !isPagado && !!cartera && activa;
   const puedeEditarPago = isPagado && !!cartera && !cobro.esCortesia && !cobro.esPagoAdelantado;
+  const puedeAbonoAdicional = isPagado && !!cartera && activa && !!cobro.esPagoAdelantado && !cobro.esCortesia;
+  const tieneAbonoExtra = puedeAbonoAdicional && tieneAdelantoRecibido(cobro);
 
   useEffect(() => {
     if (!abierto) return;
@@ -247,11 +254,19 @@ function MenuFilaCobro({
         >
           <button type="button" className={item} onClick={() => elegir(() => onPago(cobro, isPagado))}>
             {isPagado ? <XCircle size={14} className="text-rose-500" /> : <CheckCircle2 size={14} className="text-emerald-600" />}
-            {isPagado ? 'Revertir pago' : 'Registrar pago'}
+            {isPagado
+              ? (tieneAbonoExtra ? 'Revertir abono adicional' : 'Revertir pago')
+              : 'Registrar pago'}
           </button>
           {puedeEditarPago && (
             <button type="button" className={item} onClick={() => elegir(() => onEditarPago(cobro, cartera!))}>
               <FilePenLine size={14} className="text-indigo-600" /> Editar pago
+            </button>
+          )}
+          {puedeAbonoAdicional && (
+            <button type="button" className={item} onClick={() => elegir(() => onAbonoAdicional(cobro, cartera!))}>
+              <CalendarDays size={14} className="text-sky-600" />
+              {tieneAbonoExtra ? 'Editar abono adicional' : 'Adelantar más'}
             </button>
           )}
           {puedeCobrar && (
@@ -289,7 +304,7 @@ function MenuFilaCobro({
 
 // ─── Fila de cobro ────────────────────────────────────────────────────────────
 function CobroRow({
-  cobro, cartera, cliente, aliados = [], onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onToggleActiva, loadingId,
+  cobro, cartera, cliente, aliados = [], onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onAbonoAdicional, onToggleActiva, loadingId,
   vistaUnificada = false,
   empresaGrupo,
   empresaRowSpan,
@@ -306,6 +321,7 @@ function CobroRow({
   onDelete: (id: string) => void;
   onPagoAdelanto: (c: Cartera) => void;
   onEditarPago: (cobro: CobroMensual, cartera: Cartera) => void;
+  onAbonoAdicional: (cobro: CobroMensual, cartera: Cartera) => void;
   onToggleActiva: (c: Cartera) => void;
   loadingId: string | null;
   vistaUnificada?: boolean;
@@ -322,6 +338,7 @@ function CobroRow({
   const estVisual = getEstadoVisualCobro(cobro);
 
   const conAdelanto = tieneAdelantoRecibido(cobro) && !esPagoAnticipado(cobro);
+  const conAbonoEnPagadoAntes = esPagoAnticipado(cobro) && tieneAdelantoRecibido(cobro);
   const diaClsPagado = cobro.esCortesia
     ? 'bg-violet-500 text-white'
     : esPagoAnticipado(cobro)
@@ -356,6 +373,7 @@ function CobroRow({
         onDelete={onDelete}
         onPagoAdelanto={onPagoAdelanto}
         onEditarPago={onEditarPago}
+        onAbonoAdicional={onAbonoAdicional}
         onToggleActiva={onToggleActiva}
       />
       {empresaGrupo && empresaRowSpan && (
@@ -403,7 +421,7 @@ function CobroRow({
           {esPagoAnticipado(cobro) && (
             <BadgePagoAnticipado mesRecibido={etiquetaMesRecibido(cobro)} />
           )}
-          {tieneAdelantoRecibido(cobro) && !esPagoAnticipado(cobro) && <BadgeRecibioAdelanto />}
+          {(conAdelanto || conAbonoEnPagadoAntes) && <BadgeRecibioAdelanto />}
         </div>
       </td>
 
@@ -417,11 +435,19 @@ function CobroRow({
       {/* Valor */}
       <td>
         <div className="flex flex-col justify-center">
-          {conAdelanto ? (
+          {conAdelanto || conAbonoEnPagadoAntes ? (
             <div className="flex flex-col gap-1">
               <div>
-                <p className="text-[9px] font-bold uppercase tracking-wide text-emerald-700/80 leading-none">Mes</p>
-                <p className="font-bold text-emerald-600 tabular-nums leading-tight">{formatCOP(cobro.valorCobro)}</p>
+                <p className="text-[9px] font-bold uppercase tracking-wide text-emerald-700/80 leading-none">
+                  {conAbonoEnPagadoAntes ? 'Mes (sin caja)' : 'Mes'}
+                </p>
+                <p className={`font-bold tabular-nums leading-tight ${
+                  conAbonoEnPagadoAntes
+                    ? 'text-sky-600 line-through decoration-sky-400/70'
+                    : 'text-emerald-600'
+                }`}>
+                  {formatCOP(cobro.valorCobro)}
+                </p>
               </div>
               <div>
                 <p className="text-[9px] font-bold uppercase tracking-wide text-sky-700/80 leading-none">Adelanto</p>
@@ -439,8 +465,11 @@ function CobroRow({
               {formatCOP(cobro.valorCobro)}
             </span>
           )}
-          {esPagoAnticipado(cobro) && (
+          {esPagoAnticipado(cobro) && !conAbonoEnPagadoAntes && (
             <span className="text-[10px] font-semibold text-sky-700">Sin caja en este mes</span>
+          )}
+          {conAbonoEnPagadoAntes && (
+            <span className="text-[10px] font-semibold text-emerald-700">Abono nuevo entra a caja</span>
           )}
           {cobro.esCortesia && (
             <span className="text-[10px] font-extrabold text-violet-700 uppercase tracking-tighter">Cortesía</span>
@@ -482,6 +511,10 @@ function CobroRow({
           cobro.esCortesia ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-violet-100 text-violet-900 border border-violet-300">
               <span className="w-1.5 h-1.5 rounded-full bg-violet-500" /> Cortesía
+            </span>
+          ) : conAbonoEnPagadoAntes ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-900 border border-sky-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Pagado antes + abono
             </span>
           ) : esPagoAnticipado(cobro) ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-900 border border-sky-300">
@@ -547,6 +580,7 @@ type CobroTableProps = {
   onDelete: (id: string) => void;
   onPagoAdelanto: (c: Cartera) => void;
   onEditarPago: (cobro: CobroMensual, cartera: Cartera) => void;
+  onAbonoAdicional: (cobro: CobroMensual, cartera: Cartera) => void;
   onToggleActiva: (c: Cartera) => void;
   loadingId: string | null;
   vistaUnificada?: boolean;
@@ -554,7 +588,7 @@ type CobroTableProps = {
 
 function CobroTable({
   cobros, carteras, clientesMap, aliados,
-  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onToggleActiva, loadingId,
+  onPago, onCortesia, onEdit, onDelete, onPagoAdelanto, onEditarPago, onAbonoAdicional, onToggleActiva, loadingId,
   vistaUnificada = false,
 }: CobroTableProps) {
   const bloques = useMemo(
@@ -599,6 +633,7 @@ function CobroTable({
                         onDelete={onDelete}
                         onPagoAdelanto={onPagoAdelanto}
                         onEditarPago={onEditarPago}
+                        onAbonoAdicional={onAbonoAdicional}
                         onToggleActiva={onToggleActiva}
                         loadingId={loadingId}
                         vistaUnificada={vistaUnificada}
@@ -661,6 +696,7 @@ export default function Carteras() {
   const [editCartera, setEditCartera] = useState<Cartera | null>(null);
   const [adelantoCartera, setAdelantoCartera] = useState<Cartera | null>(null);
   const [pagoEditar, setPagoEditar] = useState<{ cobro: CobroMensual; cartera: Cartera } | null>(null);
+  const [abonoAdicional, setAbonoAdicional] = useState<{ cobro: CobroMensual; cartera: Cartera } | null>(null);
   const [pagoCobro, setPagoCobro] = useState<CobroMensual | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
@@ -827,11 +863,11 @@ export default function Carteras() {
   const pendientesTabla = useMemo(() => cobrosTabla.filter(c => c.estado !== 'Pagado'), [cobrosTabla]);
   const pagadosTabla = useMemo(() => cobrosTabla.filter(c => c.estado === 'Pagado'), [cobrosTabla]);
   const pagadosCajaTabla = useMemo(
-    () => pagadosTabla.filter(c => !esPagoAnticipado(c) && !c.esCortesia),
+    () => pagadosTabla.filter(c => !c.esCortesia && (!esPagoAnticipado(c) || tieneAdelantoRecibido(c))),
     [pagadosTabla],
   );
   const pagadosAnticipadosTabla = useMemo(
-    () => pagadosTabla.filter(c => esPagoAnticipado(c)),
+    () => pagadosTabla.filter(c => esPagoAnticipado(c) && !tieneAdelantoRecibido(c)),
     [pagadosTabla],
   );
   const pagadosCortesiaTabla = useMemo(
@@ -846,7 +882,7 @@ export default function Carteras() {
   const pendientes = useMemo(() => cobrosOrdenados.filter(c => c.estado !== 'Pagado'), [cobrosOrdenados]);
   const pagados    = useMemo(() => cobrosOrdenados.filter(c => c.estado === 'Pagado'), [cobrosOrdenados]);
   const pagadosCaja = useMemo(
-    () => pagados.filter(c => !esPagoAnticipado(c) && !c.esCortesia),
+    () => pagados.filter(c => !c.esCortesia && (!esPagoAnticipado(c) || tieneAdelantoRecibido(c))),
     [pagados]
   );
   const pagadosAnticipados = useMemo(
@@ -862,8 +898,8 @@ export default function Carteras() {
     [pagadosCaja]
   );
   const totalPend = useMemo(() => pendientes.reduce((s, c) => s + c.valorCobro, 0), [pendientes]);
-  const totalPag  = useMemo(() => 
-    pagadosCaja.reduce((s, c) => s + c.valorCobro, 0), 
+  const totalPag  = useMemo(
+    () => pagadosCaja.reduce((s, c) => s + (esPagoAnticipado(c) ? 0 : c.valorCobro), 0),
     [pagadosCaja]
   );
   const totalAdelantadoRecibido = useMemo(
@@ -1018,15 +1054,19 @@ export default function Carteras() {
 
   const handlePago = (cobro: CobroMensual, isPagado: boolean) => {
     if (isPagado) {
+      const soloAbono = !!cobro.esPagoAdelantado && tieneAdelantoRecibido(cobro);
       setConfirmConfig({
         isOpen: true,
-        title: '¿Revertir pago?',
-        message: `¿Estás seguro de que quieres revertir el pago de ${cobro.carteraNombre}?`,
+        title: soloAbono ? '¿Revertir abono adicional?' : '¿Revertir pago?',
+        message: soloAbono
+          ? `Se quita el abono adicional de ${cobro.carteraNombre} y las cuotas futuras de ese abono. El mes sigue marcado como pagado antes.`
+          : `¿Estás seguro de que quieres revertir el pago de ${cobro.carteraNombre}?`,
         type: 'danger',
         onConfirm: async () => {
           setLoadingId(cobro.id);
           try {
-            await revertirPago(cobro);
+            if (soloAbono) await revertirAbonoAdicional(cobro);
+            else await revertirPago(cobro);
           } finally { setLoadingId(null); }
         }
       });
@@ -1091,6 +1131,14 @@ export default function Carteras() {
   const handleEdit = (c: Cartera) => { setEditCartera(c); setModalOpen(true); };
   const handlePagoAdelanto = (c: Cartera) => setAdelantoCartera(c);
   const handleEditarPago = (cobro: CobroMensual, cartera: Cartera) => setPagoEditar({ cobro, cartera });
+  const handleAbonoAdicional = (cobro: CobroMensual, cartera: Cartera) => setAbonoAdicional({ cobro, cartera });
+  const handlePagoModalSuccess = (mensaje: string) => {
+    setAdelantoCartera(null);
+    setPagoEditar(null);
+    setAbonoAdicional(null);
+    setColPag(false);
+    setFeedback({ ok: true, msg: mensaje });
+  };
 
   const handleToggleActiva = (cartera: Cartera) => {
     const activa = esCarteraActiva(cartera);
@@ -1803,6 +1851,7 @@ export default function Carteras() {
             onDelete={handleDelete}
             onPagoAdelanto={handlePagoAdelanto}
             onEditarPago={handleEditarPago}
+            onAbonoAdicional={handleAbonoAdicional}
             onToggleActiva={handleToggleActiva}
             loadingId={loadingId}
             vistaUnificada
@@ -1819,7 +1868,8 @@ export default function Carteras() {
               {!colPend && (
                 <CobroTable cobros={pendientesTabla} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
-                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
+                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onAbonoAdicional={handleAbonoAdicional}
+                  onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
             </div>
           )}
@@ -1827,13 +1877,14 @@ export default function Carteras() {
           {/* Pagados */}
           {pagadosCajaTabla.length > 0 && (
             <div className="space-y-2">
-              <SectionHeader label="✓ Cobrado en caja" count={pagadosCajaTabla.length}
-                total={formatCOP(pagadosCajaTabla.reduce((s, c) => s + c.valorCobro + (c.montoAdelantado || 0), 0))} color="emerald"
+              <SectionHeader label="✓ Cobrado en caja (incluye abonos extras)" count={pagadosCajaTabla.length}
+                total={formatCOP(pagadosCajaTabla.reduce((s, c) => s + sumaACajaMes(c), 0))} color="emerald"
                 collapsed={colPag} onToggle={() => setColPag(v => !v)} />
               {!colPag && (
                 <CobroTable cobros={pagadosCajaTabla} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
-                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
+                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onAbonoAdicional={handleAbonoAdicional}
+                  onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
             </div>
           )}
@@ -1846,7 +1897,8 @@ export default function Carteras() {
               {!colPag && (
                 <CobroTable cobros={pagadosCortesiaTabla} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
-                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
+                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onAbonoAdicional={handleAbonoAdicional}
+                  onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
             </div>
           )}
@@ -1859,7 +1911,8 @@ export default function Carteras() {
               {!colPag && (
                 <CobroTable cobros={pagadosAnticipadosTabla} carteras={carteras} clientesMap={clientesMap} aliados={aliados}
                   onPago={handlePago} onCortesia={handleCortesia} onEdit={handleEdit} onDelete={handleDelete}
-                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onToggleActiva={handleToggleActiva} loadingId={loadingId} />
+                  onPagoAdelanto={handlePagoAdelanto} onEditarPago={handleEditarPago} onAbonoAdicional={handleAbonoAdicional}
+                  onToggleActiva={handleToggleActiva} loadingId={loadingId} />
               )}
             </div>
           )}
@@ -1893,6 +1946,7 @@ export default function Carteras() {
             mesActual={mesSel}
             anioActual={anioSel}
             onClose={() => setAdelantoCartera(null)}
+            onSuccess={handlePagoModalSuccess}
           />
         )}
       </Modal>
@@ -1902,10 +1956,26 @@ export default function Carteras() {
         {pagoEditar && (
           <PagoAdelantoModal
             cartera={pagoEditar.cartera}
-            cobro={pagoEditar.cobro}
+            cobro={cobros.find(c => c.id === pagoEditar.cobro.id) || pagoEditar.cobro}
             mesActual={pagoEditar.cobro.mes}
             anioActual={pagoEditar.cobro.anio}
             onClose={() => setPagoEditar(null)}
+            onSuccess={handlePagoModalSuccess}
+          />
+        )}
+      </Modal>
+
+      <Modal isOpen={!!abonoAdicional} onClose={() => setAbonoAdicional(null)}
+        title="Abono adicional" size="md">
+        {abonoAdicional && (
+          <PagoAdelantoModal
+            cartera={abonoAdicional.cartera}
+            cobro={cobros.find(c => c.id === abonoAdicional.cobro.id) || abonoAdicional.cobro}
+            mesActual={abonoAdicional.cobro.mes}
+            anioActual={abonoAdicional.cobro.anio}
+            abonoAdicional
+            onClose={() => setAbonoAdicional(null)}
+            onSuccess={handlePagoModalSuccess}
           />
         )}
       </Modal>
