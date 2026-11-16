@@ -4,12 +4,22 @@ import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, FileText, Landmark,
 import { useAliados } from '../hooks/useAliados';
 import { useClientes } from '../hooks/useClientes';
 import { useCarteras } from '../hooks/useCarteras';
+import { useCobros } from '../hooks/useCobros';
 import { useLiquidacionesAliado } from '../hooks/useLiquidacionesAliado';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
-import { calcularParticipacion, etiquetaMes, mesDeFactura, sumarMes } from '../utils/participacionAliado';
+import {
+  calcularParticipacion,
+  esLiquidacionDelMes,
+  esLiquidacionPendienteHasta,
+  etiquetaMes,
+  mesDeFactura,
+  sumarMes,
+} from '../utils/participacionAliado';
+import { desgloseReferidosPortafolio, porPagarDesdePortafolio } from '../utils/referidosPortafolio';
 import { esCarteraActiva } from '../utils/activo';
+import { combinarCobrosConVirtuales } from '../utils/cobrosVirtuales';
 import { borrarComprobanteStorage, esImagenComprobante, subirComprobantesAliado } from '../services/comprobantesAliado';
 import type { ComprobanteAliado, LiquidacionAliado } from '../types';
 
@@ -49,10 +59,11 @@ export default function AliadoDetalle() {
   const { aliados, loading } = useAliados();
   const { clientes } = useClientes();
   const { carteras } = useCarteras();
-  const { liquidaciones, loading: loadingLiq, marcarPagadas, revertirPagadas, actualizarComprobantes } = useLiquidacionesAliado();
   const hoy = new Date();
   const [mesSel, setMesSel] = useState(hoy.getMonth() + 1);
   const [anioSel, setAnioSel] = useState(hoy.getFullYear());
+  const { cobros } = useCobros(mesSel, anioSel);
+  const { liquidaciones, loading: loadingLiq, marcarPagadas, revertirPagadas, actualizarComprobantes } = useLiquidacionesAliado();
   const [marcando, setMarcando] = useState(false);
   const [revirtiendo, setRevirtiendo] = useState(false);
   const [editandoComprobantes, setEditandoComprobantes] = useState(false);
@@ -108,41 +119,94 @@ export default function AliadoDetalle() {
     () => liquidaciones.filter(l => l.aliadoId === id),
     [liquidaciones, id],
   );
-  const facturado = delAliado.filter(l => {
-    const f = mesDeFactura(l);
-    return f.mes === mesSel && f.anio === anioSel;
-  });
-  const aPagar = delAliado.filter(l => l.mesPago === mesSel && l.anioPago === anioSel);
-  const pendientesPago = aPagar.filter(l => l.estado !== 'Pagado');
-  const pagadosMes = aPagar.filter(l => l.estado === 'Pagado');
-  const totalPorPagar = useMemo(
-    () => pendientesPago.reduce((s, l) => s + l.montoParticipacion, 0),
-    [pendientesPago],
+
+  const clientesMap = useMemo(() => new Map(clientes.map(c => [c.id, c])), [clientes]);
+
+  const cobrosDelMes = useMemo(() => {
+    const ids = new Set(referidos.map(c => c.id));
+    const carterasAliado = carteras.filter(c => ids.has(c.clienteId) && esCarteraActiva(c));
+    return combinarCobrosConVirtuales(
+      cobros.filter(c => ids.has(c.clienteId)),
+      carterasAliado,
+      mesSel,
+      anioSel,
+      clientesMap,
+    );
+  }, [cobros, carteras, referidos, mesSel, anioSel, clientesMap]);
+
+  /** Mismo portafolio que Carteras (valor × %), solo este aliado. */
+  const desgloseMes = useMemo(
+    () => desgloseReferidosPortafolio({
+      carteras,
+      clientesMap,
+      cobrosDelMes,
+      aliados,
+      mes: mesSel,
+      anio: anioSel,
+      aliadoId: id,
+    }),
+    [carteras, clientesMap, cobrosDelMes, aliados, mesSel, anioSel, id],
   );
+
+  const porPagarMes = useMemo(
+    () => porPagarDesdePortafolio({
+      desglose: desgloseMes,
+      liquidaciones: delAliado,
+      mes: mesSel,
+      anio: anioSel,
+      aliadoId: id,
+    }),
+    [desgloseMes, delAliado, mesSel, anioSel, id],
+  );
+
+  /** Solo liquidaciones facturadas en el mes que estás viendo (no las de octubre en noviembre). */
+  const facturado = useMemo(
+    () => delAliado.filter(l => esLiquidacionDelMes(l, mesSel, anioSel)),
+    [delAliado, mesSel, anioSel],
+  );
+
+  /** Pendiente de transferir: este mes + anteriores aún no pagados. */
+  const pendientesPago = useMemo(
+    () => delAliado.filter(l => esLiquidacionPendienteHasta(l, mesSel, anioSel)),
+    [delAliado, mesSel, anioSel],
+  );
+
+  /** Pagado: únicamente lo transferido de ESTE mes de factura. */
+  const pagadosMes = useMemo(
+    () => facturado.filter(l => l.estado === 'Pagado'),
+    [facturado],
+  );
+
+  const totalPorPagar = porPagarMes.total;
   const totalPagado = useMemo(
     () => pagadosMes.reduce((s, l) => s + l.montoParticipacion, 0),
     [pagadosMes],
   );
-  const estadoMes: 'sin-movimiento' | 'por-pagar' | 'parcial' | 'pagado' =
-    aPagar.length === 0
-      ? 'sin-movimiento'
-      : pendientesPago.length === 0
-      ? 'pagado'
-      : pagadosMes.length === 0
-      ? 'por-pagar'
-      : 'parcial';
 
-  const reportePago = useMemo(() => resumenFactura(aPagar), [aPagar]);
-  const reporteFacturado = useMemo(() => resumenFactura(facturado), [facturado]);
+  const estadoMes: 'sin-movimiento' | 'por-pagar' | 'parcial' | 'pagado' =
+    facturado.length === 0 && pendientesPago.length === 0
+      ? 'sin-movimiento'
+      : pendientesPago.length === 0 && pagadosMes.length > 0
+      ? 'pagado'
+      : pendientesPago.length > 0 && pagadosMes.length > 0
+      ? 'parcial'
+      : pendientesPago.length > 0
+      ? 'por-pagar'
+      : 'sin-movimiento';
+
+  const reportePago = useMemo(
+    () => resumenFactura(pendientesPago.length > 0 ? pendientesPago : facturado),
+    [pendientesPago, facturado],
+  );
   const comprobantesFactura = useMemo(() => {
     const map = new Map<string, ComprobanteAliado>();
-    for (const item of aPagar) {
+    for (const item of pagadosMes) {
       for (const c of item.comprobantes || []) {
         if (c?.url) map.set(c.path || c.url, c);
       }
     }
     return [...map.values()];
-  }, [aPagar]);
+  }, [pagadosMes]);
 
   const irMes = (delta: number) => {
     const sig = sumarMes(mesSel, anioSel, delta);
@@ -266,9 +330,7 @@ export default function AliadoDetalle() {
     );
   }
 
-  const totalFacturado = reporteFacturado.total;
-  const totalAPagar = reportePago.total;
-  const mesPagoSiguiente = sumarMes(mesSel, anioSel, 1);
+  const totalFacturado = desgloseMes.facturado + desgloseMes.otros;
 
   return (
     <div className="space-y-6">
@@ -345,31 +407,51 @@ export default function AliadoDetalle() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
+        <div className={`grid grid-cols-1 gap-3 mt-1 ${
+          totalPorPagar > 0 && totalPagado > 0 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
+        }`}>
           <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
             <p className="text-[10px] font-bold uppercase text-indigo-700">Facturado en {MESES[mesSel - 1]}</p>
             <p className="text-lg font-bold text-indigo-800 tabular-nums mt-1">{formatCOP(totalFacturado)}</p>
-            <p className="text-[10px] text-slate-500 mt-1">Se paga del 1 al 5 de {etiquetaMes(mesPagoSiguiente.mes, mesPagoSiguiente.anio)}</p>
-          </div>
-          <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-3">
-            <p className="text-[10px] font-bold uppercase text-amber-800">Por pagar</p>
-            <p className="text-lg font-bold text-amber-900 tabular-nums mt-1">{formatCOP(totalPorPagar)}</p>
             <p className="text-[10px] text-slate-500 mt-1">
-              {pendientesPago.length} liquidación{pendientesPago.length !== 1 ? 'es' : ''} pendiente{pendientesPago.length !== 1 ? 's' : ''}
+              {desgloseMes.facturadoCantidad + desgloseMes.otrosCantidad} cartera{(desgloseMes.facturadoCantidad + desgloseMes.otrosCantidad) !== 1 ? 's' : ''}
+              {desgloseMes.otros > 0
+                ? ` · ${formatCOP(desgloseMes.facturado)} + ${formatCOP(desgloseMes.otros)} otros`
+                : ''}
             </p>
-            {pendientesPago.length > 0 && (
-              <button type="button" onClick={abrirMarcarPago} disabled={marcando || revirtiendo} className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold disabled:opacity-60">
-                <CheckCircle2 size={13} /> Marcar pagado
-              </button>
-            )}
           </div>
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
-            <p className="text-[10px] font-bold uppercase text-emerald-700">Ya pagado</p>
-            <p className="text-lg font-bold text-emerald-800 tabular-nums mt-1">{formatCOP(totalPagado)}</p>
-            <p className="text-[10px] text-slate-500 mt-1">
-              {pagadosMes.length} liquidación{pagadosMes.length !== 1 ? 'es' : ''} · total mes {formatCOP(totalAPagar)}
-            </p>
-            {pagadosMes.length > 0 && (
+
+          {totalPorPagar > 0 && (
+            <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-3">
+              <p className="text-[10px] font-bold uppercase text-amber-800">Por pagar</p>
+              <p className="text-lg font-bold text-amber-900 tabular-nums mt-1">{formatCOP(totalPorPagar)}</p>
+              <div className="mt-1.5 space-y-0.5 text-[10px] text-amber-900/80">
+                <div className="flex justify-between gap-2">
+                  <span>Este mes</span>
+                  <span className="font-bold tabular-nums">{formatCOP(porPagarMes.esteMes)}</span>
+                </div>
+                {porPagarMes.anteriores > 0 && (
+                  <div className="flex justify-between gap-2">
+                    <span>Meses anteriores</span>
+                    <span className="font-bold tabular-nums">{formatCOP(porPagarMes.anteriores)}</span>
+                  </div>
+                )}
+              </div>
+              {pendientesPago.length > 0 && (
+                <button type="button" onClick={abrirMarcarPago} disabled={marcando || revirtiendo} className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold disabled:opacity-60">
+                  <CheckCircle2 size={13} /> Marcar pagado
+                </button>
+              )}
+            </div>
+          )}
+
+          {totalPagado > 0 && (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+              <p className="text-[10px] font-bold uppercase text-emerald-700">Pagado</p>
+              <p className="text-lg font-bold text-emerald-800 tabular-nums mt-1">{formatCOP(totalPagado)}</p>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Solo este mes · {pagadosMes.length} liquidación{pagadosMes.length !== 1 ? 'es' : ''}
+              </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -385,11 +467,11 @@ export default function AliadoDetalle() {
                   disabled={marcando || revirtiendo || editandoComprobantes}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 bg-white text-rose-700 text-xs font-semibold hover:bg-rose-50 disabled:opacity-60"
                 >
-                  <RotateCcw size={13} /> Revertir pago
+                  <RotateCcw size={13} /> Revertir
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -404,7 +486,7 @@ export default function AliadoDetalle() {
           </div>
           <div className="text-sm text-slate-300 text-right space-y-1">
             <p className="font-semibold text-white">SALE</p>
-            <p>Transferir del 1 al 5</p>
+            <p>Transferir en el mismo mes</p>
             <p>{aliado.bancoNombre}</p>
             <p className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold ${
               estadoMes === 'pagado'
@@ -450,16 +532,17 @@ export default function AliadoDetalle() {
             </div>
           </div>
 
-          {(totalPorPagar > 0 || totalPagado > 0) && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
+          {totalPorPagar > 0 && (
+            <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 flex items-center justify-between gap-2">
+              <div>
                 <p className="text-[10px] font-bold uppercase text-amber-800">Por pagar</p>
-                <p className="text-sm font-bold text-amber-900 tabular-nums mt-0.5">{formatCOP(totalPorPagar)}</p>
+                {porPagarMes.anteriores > 0 && (
+                  <p className="text-[10px] text-amber-700/80 mt-0.5">
+                    Este mes {formatCOP(porPagarMes.esteMes)} · Anteriores {formatCOP(porPagarMes.anteriores)}
+                  </p>
+                )}
               </div>
-              <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
-                <p className="text-[10px] font-bold uppercase text-emerald-700">Pagado</p>
-                <p className="text-sm font-bold text-emerald-800 tabular-nums mt-0.5">{formatCOP(totalPagado)}</p>
-              </div>
+              <p className="text-sm font-bold text-amber-900 tabular-nums">{formatCOP(totalPorPagar)}</p>
             </div>
           )}
 
@@ -737,43 +820,32 @@ export default function AliadoDetalle() {
 
       <div className="space-y-2 print:hidden">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-bold text-slate-800">Pago del 1 al 5 de {MESES[mesSel - 1]} {anioSel}</h2>
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
-              Por pagar {formatCOP(totalPorPagar)}
-            </span>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-              Pagado {formatCOP(totalPagado)}
-            </span>
-          </div>
+          <h2 className="font-bold text-slate-800">Por transferir</h2>
+          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold">
+            {formatCOP(totalPorPagar)}
+          </span>
         </div>
-        {aPagar.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">Nada por transferir en estos primeros 5 días.</div>
+        {pendientesPago.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
+            Nada pendiente por transferir.
+          </div>
         ) : (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden divide-y divide-slate-100">
-            {aPagar.map(item => {
-              const pagado = item.estado === 'Pagado';
+            {pendientesPago.map(item => {
+              const f = mesDeFactura(item);
+              const esAnterior = f.mes !== mesSel || f.anio !== anioSel;
               return (
                 <div key={item.id} className="px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
                   <div className="min-w-0">
                     <p className="font-medium text-slate-800">{item.empresa || item.clienteNombre}</p>
                     <p className="text-[11px] text-slate-400">
-                      Facturado en {etiquetaMes(mesDeFactura(item).mes, mesDeFactura(item).anio)}
-                      {item.comprobantes?.length ? ` · ${item.comprobantes.length} comprobante${item.comprobantes.length !== 1 ? 's' : ''}` : ''}
+                      Facturado en {etiquetaMes(f.mes, f.anio)}
+                      {esAnterior ? ' · mes anterior' : ''}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-                      pagado
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        : 'bg-amber-100 text-amber-900 border border-amber-200'
-                    }`}>
-                      {pagado ? 'Pagado' : 'Por pagar'}
-                    </span>
-                    <span className={`font-bold tabular-nums ${pagado ? 'text-emerald-700' : 'text-amber-800'}`}>
-                      {formatCOP(item.montoParticipacion)}
-                    </span>
-                  </div>
+                  <span className="font-bold tabular-nums text-amber-800 shrink-0">
+                    {formatCOP(item.montoParticipacion)}
+                  </span>
                 </div>
               );
             })}

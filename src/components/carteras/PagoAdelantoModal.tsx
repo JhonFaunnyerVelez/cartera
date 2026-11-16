@@ -203,7 +203,7 @@ export default function PagoAdelantoModal({
               <div className="border-t border-sky-200 pt-2 text-xs text-sky-800 space-y-0.5">
                 <p className="font-semibold">{aliado.codigo} · {aliado.nombre} · {porcentaje}%</p>
                 <p>Comisión de cada mes: {formatCOP(comisionMes)}. No se acumula el adelanto.</p>
-                <p>Queda facturada en cada mes adelantado y se paga del 1 al 5 del mes siguiente.</p>
+                <p>Queda facturada en cada mes adelantado y se paga en ese mismo mes (hasta el día 5).</p>
               </div>
             )}
           </div>

@@ -3,12 +3,17 @@ import { Link } from 'react-router-dom';
 import { Handshake, Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { useAliados, type AliadoInput } from '../hooks/useAliados';
 import { useClientes } from '../hooks/useClientes';
+import { useCarteras } from '../hooks/useCarteras';
+import { useCobros } from '../hooks/useCobros';
 import { useLiquidacionesAliado } from '../hooks/useLiquidacionesAliado';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import type { Aliado, TipoCuentaAliado } from '../types';
-import { mesDeFactura, sumarMes } from '../utils/participacionAliado';
+import { sumarMes } from '../utils/participacionAliado';
+import { desgloseReferidosPortafolio, porPagarDesdePortafolio } from '../utils/referidosPortafolio';
+import { combinarCobrosConVirtuales } from '../utils/cobrosVirtuales';
+import { esCarteraActiva } from '../utils/activo';
 
 function formatCOP(v: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
@@ -31,17 +36,21 @@ const emptyForm = (): AliadoInput => ({
 export default function Aliados() {
   const { aliados, loading, addAliado, updateAliado, deleteAliado } = useAliados();
   const { clientes } = useClientes();
+  const { carteras } = useCarteras();
+  const hoy = new Date();
+  const [mesSel, setMesSel] = useState(hoy.getMonth() + 1);
+  const [anioSel, setAnioSel] = useState(hoy.getFullYear());
+  const { cobros } = useCobros(mesSel, anioSel);
   const { liquidaciones, loading: loadingLiq } = useLiquidacionesAliado();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Aliado | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const hoy = new Date();
-  const [mesSel, setMesSel] = useState(hoy.getMonth() + 1);
-  const [anioSel, setAnioSel] = useState(hoy.getFullYear());
   const [confirmDelete, setConfirmDelete] = useState<Aliado | null>(null);
   const [blocked, setBlocked] = useState('');
+
+  const clientesMap = useMemo(() => new Map(clientes.map(c => [c.id, c])), [clientes]);
 
   const empresasPorAliado = useMemo(() => {
     const map: Record<string, number> = {};
@@ -52,25 +61,38 @@ export default function Aliados() {
     return map;
   }, [clientes]);
 
-  const facturadoMes = useMemo(
-    () => liquidaciones.filter(l => {
-      const f = mesDeFactura(l);
-      return f.mes === mesSel && f.anio === anioSel;
-    }),
-    [liquidaciones, mesSel, anioSel],
-  );
-  const aPagarMes = useMemo(
-    () => liquidaciones.filter(l => l.mesPago === mesSel && l.anioPago === anioSel),
-    [liquidaciones, mesSel, anioSel],
-  );
+  const cobrosDelMes = useMemo(() => {
+    const carterasVivas = carteras.filter(c => esCarteraActiva(c));
+    return combinarCobrosConVirtuales(cobros, carterasVivas, mesSel, anioSel, clientesMap);
+  }, [cobros, carteras, mesSel, anioSel, clientesMap]);
 
-  const sumaPorAliado = (items: typeof facturadoMes) => {
-    const map: Record<string, number> = {};
-    for (const l of items) map[l.aliadoId] = (map[l.aliadoId] || 0) + l.montoParticipacion;
+  /** Mismos montos que Carteras: facturado+otros y por pagar por aliado. */
+  const montosPorAliado = useMemo(() => {
+    const map: Record<string, { facturado: number; porPagar: number }> = {};
+    for (const a of aliados) {
+      const desglose = desgloseReferidosPortafolio({
+        carteras,
+        clientesMap,
+        cobrosDelMes,
+        aliados,
+        mes: mesSel,
+        anio: anioSel,
+        aliadoId: a.id,
+      });
+      const porPagar = porPagarDesdePortafolio({
+        desglose,
+        liquidaciones,
+        mes: mesSel,
+        anio: anioSel,
+        aliadoId: a.id,
+      });
+      map[a.id] = {
+        facturado: desglose.facturado + desglose.otros,
+        porPagar: porPagar.total,
+      };
+    }
     return map;
-  };
-  const facturadoPorAliado = sumaPorAliado(facturadoMes);
-  const aPagarPorAliado = sumaPorAliado(aPagarMes);
+  }, [aliados, carteras, clientesMap, cobrosDelMes, liquidaciones, mesSel, anioSel]);
 
   const irMes = (delta: number) => {
     const sig = sumarMes(mesSel, anioSel, delta);
@@ -149,7 +171,7 @@ export default function Aliados() {
             <Handshake size={20} className="text-indigo-600" /> Aliados
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Entra al aliado para ver sus referidos, lo facturado y el pago de los primeros 5 días.
+            Entra al aliado para ver sus referidos, lo facturado y el pago del mismo mes.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -188,7 +210,7 @@ export default function Aliados() {
                   <th className="text-white">Banco</th>
                   <th className="text-white">Referidos</th>
                   <th className="text-white">Facturado</th>
-                  <th className="text-white">Por pagar 1–5</th>
+                  <th className="text-white">Por pagar</th>
                   <th className="text-white text-center">Acciones</th>
                 </tr>
               </thead>
@@ -210,8 +232,8 @@ export default function Aliados() {
                       <span className="block text-[10px] text-slate-400">{a.tipoCuenta} · {a.numeroCuenta}</span>
                     </td>
                     <td className="text-sm font-semibold text-slate-700">{empresasPorAliado[a.id] || 0}</td>
-                    <td className="text-sm font-bold text-indigo-700 tabular-nums">{formatCOP(facturadoPorAliado[a.id] || 0)}</td>
-                    <td className="text-sm font-bold text-emerald-700 tabular-nums">{formatCOP(aPagarPorAliado[a.id] || 0)}</td>
+                    <td className="text-sm font-bold text-indigo-700 tabular-nums">{formatCOP(montosPorAliado[a.id]?.facturado || 0)}</td>
+                    <td className="text-sm font-bold text-amber-800 tabular-nums">{formatCOP(montosPorAliado[a.id]?.porPagar || 0)}</td>
                     <td>
                       <div className="flex items-center justify-center gap-1">
                         <Link to={`/aliados/${a.id}`} className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center hover:bg-indigo-100" title="Ver detalle">

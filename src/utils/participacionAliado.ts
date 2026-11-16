@@ -1,4 +1,4 @@
-import type { Aliado, Cliente } from '../types';
+import type { Aliado, Cliente, LiquidacionAliado } from '../types';
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -14,14 +14,17 @@ export function calcularParticipacion(montoRecibido: number, porcentaje: number)
   return miles;
 }
 
-/** El aliado se paga entre el día 1 y el 5 del mes siguiente al cobro recibido. */
+/** El aliado se paga en el mismo mes en que se factura (límite día 5). */
 export function periodoLiquidacionAliado(desde = new Date()) {
-  const inicio = new Date(desde.getFullYear(), desde.getMonth() + 1, 1);
-  const fechaLimite = new Date(inicio.getFullYear(), inicio.getMonth(), 5, 23, 59, 59);
+  const mes = desde.getMonth() + 1;
+  const anio = desde.getFullYear();
+  const fechaLimite = new Date(anio, desde.getMonth(), 5, 23, 59, 59);
+  // Si ya pasó el día 5, el límite es el fin de ese mes.
+  const finMes = new Date(anio, desde.getMonth() + 1, 0, 23, 59, 59);
   return {
-    mes: inicio.getMonth() + 1,
-    anio: inicio.getFullYear(),
-    fechaLimite,
+    mes,
+    anio,
+    fechaLimite: desde.getDate() > 5 ? finMes : fechaLimite,
   };
 }
 
@@ -43,11 +46,60 @@ export function sumarMes(mes: number, anio: number, delta: number) {
 }
 
 /** Mes en que se facturó al aliado (cuando el cliente pagó la membresía). */
-export function mesDeFactura(l: { mesFacturado?: number; anioFacturado?: number; mesPago: number; anioPago: number }) {
+export function mesDeFactura(l: {
+  mesFacturado?: number;
+  anioFacturado?: number;
+  mesPago: number;
+  anioPago: number;
+  mesCobro?: number;
+  anioCobro?: number;
+}) {
   if (l.mesFacturado && l.anioFacturado) return { mes: l.mesFacturado, anio: l.anioFacturado };
+  if (l.mesCobro && l.anioCobro) return { mes: l.mesCobro, anio: l.anioCobro };
+  // Legado: mesPago era el mes siguiente al cobro.
   return sumarMes(l.mesPago, l.anioPago, -1);
 }
 
 export function etiquetaMes(mes: number, anio: number) {
   return `${MESES[mes - 1] ?? mes} ${anio}`;
+}
+
+function periodoHasta(mes: number, anio: number, mesRef: number, anioRef: number) {
+  return anio < anioRef || (anio === anioRef && mes <= mesRef);
+}
+
+/** Liquidación facturada en el mes seleccionado. */
+export function esLiquidacionDelMes(
+  l: Pick<LiquidacionAliado, 'mesFacturado' | 'anioFacturado' | 'mesPago' | 'anioPago' | 'mesCobro' | 'anioCobro'>,
+  mes: number,
+  anio: number,
+) {
+  const f = mesDeFactura(l);
+  return f.mes === mes && f.anio === anio;
+}
+
+/**
+ * Se puede marcar/pagar en este mes: facturado este mes,
+ * o legado programado al mes siguiente (mesPago) aún no migrado.
+ */
+export function esLiquidacionPagableEnMes(
+  l: Pick<LiquidacionAliado, 'mesFacturado' | 'anioFacturado' | 'mesPago' | 'anioPago' | 'mesCobro' | 'anioCobro'>,
+  mes: number,
+  anio: number,
+) {
+  if (esLiquidacionDelMes(l, mes, anio)) return true;
+  return l.mesPago === mes && l.anioPago === anio;
+}
+
+/** Pendiente por transferir hasta el mes seleccionado (incluye meses anteriores). */
+export function esLiquidacionPendienteHasta(
+  l: Pick<LiquidacionAliado, 'estado' | 'mesFacturado' | 'anioFacturado' | 'mesPago' | 'anioPago' | 'mesCobro' | 'anioCobro'>,
+  mes: number,
+  anio: number,
+) {
+  if (l.estado === 'Pagado') return false;
+  const f = mesDeFactura(l);
+  if (periodoHasta(f.mes, f.anio, mes, anio)) return true;
+  if (l.mesPago && l.anioPago && periodoHasta(l.mesPago, l.anioPago, mes, anio)) return true;
+  return false;
 }

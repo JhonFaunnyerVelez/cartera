@@ -94,7 +94,7 @@ export default function RegistroPagoModal({ cobro, participacion, onClose, onCon
             {participacion.porcentaje}% de este pago = {formatCOP(montoAliado)}
           </p>
           <p className="text-sky-700">
-            Va al banco {participacion.banco}. Se paga del 1 al 5 de {periodoAliado ? etiquetaMes(periodoAliado.mes, periodoAliado.anio) : ''}.
+            Va al banco {participacion.banco}. Se paga en {periodoAliado ? etiquetaMes(periodoAliado.mes, periodoAliado.anio) : 'este mismo mes'} (hasta el día 5).
           </p>
         </div>
       )}

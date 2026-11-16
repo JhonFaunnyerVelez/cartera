@@ -12,7 +12,13 @@ import { useCarteras } from '../hooks/useCarteras';
 import { useClientes } from '../hooks/useClientes';
 import { useAliados } from '../hooks/useAliados';
 import { useLiquidacionesAliado } from '../hooks/useLiquidacionesAliado';
-import { calcularParticipacion, resumenParticipacion } from '../utils/participacionAliado';
+import {
+  calcularParticipacion,
+  esLiquidacionPendienteHasta,
+  mesDeFactura,
+  resumenParticipacion,
+} from '../utils/participacionAliado';
+import { porPagarDesdePortafolio } from '../utils/referidosPortafolio';
 import { generarCobrosParaMes } from '../services/cierreMensual';
 import type { Aliado, CobroMensual, Cartera, Cliente } from '../types';
 import Modal from '../components/ui/Modal';
@@ -941,86 +947,31 @@ export default function Carteras() {
     ? Math.round((totalPag / realmenteACobrar) * 100)
     : 0;
 
-  const participacionAliados = useMemo(() => {
-    const porAliado = new Map<string, { codigo: string; nombre: string; total: number; cantidad: number }>();
-    let total = 0;
-    let cantidad = 0;
-    for (const cobro of cobrosOrdenados) {
-      if (cobro.estado === 'Pagado' || cobro.esCortesia || esPagoAnticipado(cobro)) continue;
-      const cliente = clientesMap.get(cobro.clienteId);
-      const info = resumenParticipacion(cliente, aliados);
-      if (!info || !cliente?.aliadoId) continue;
-      const base = cobro.valorCobro;
-      const monto = calcularParticipacion(base, info.porcentaje);
-      if (monto <= 0) continue;
-      total += monto;
-      cantidad += 1;
-      const prev = porAliado.get(cliente.aliadoId) ?? {
-        codigo: info.aliadoCodigo,
-        nombre: info.aliadoNombre,
-        total: 0,
-        cantidad: 0,
-      };
-      prev.total += monto;
-      prev.cantidad += 1;
-      porAliado.set(cliente.aliadoId, prev);
-    }
-    return { total, cantidad, detalle: [...porAliado.values()] };
-  }, [cobrosOrdenados, clientesMap, aliados]);
-
-  const facturadoAliados = useMemo(() => {
-    const porAliado = new Map<string, { codigo: string; nombre: string; total: number; cantidad: number }>();
-    let total = 0;
-    let cantidad = 0;
-    for (const l of liquidaciones) {
-      if (l.mesCobro !== mesSel || l.anioCobro !== anioSel) continue;
-      total += l.montoParticipacion;
-      cantidad += 1;
-      const prev = porAliado.get(l.aliadoId) ?? {
-        codigo: l.aliadoCodigo,
-        nombre: l.aliadoNombre,
-        total: 0,
-        cantidad: 0,
-      };
-      prev.total += l.montoParticipacion;
-      prev.cantidad += 1;
-      porAliado.set(l.aliadoId, prev);
-    }
-    return { total, cantidad, detalle: [...porAliado.values()] };
-  }, [liquidaciones, mesSel, anioSel]);
-
-  const acumuladoAliados = useMemo(() => {
-    const porAliado = new Map<string, { codigo: string; nombre: string; total: number; cantidad: number }>();
-    let total = 0;
-    let cantidad = 0;
-    for (const l of liquidaciones) {
-      if (!l.mesCobro || !l.anioCobro || l.estado === 'Pagado') continue;
-      const esHastaEsteMes = l.anioCobro < anioSel || (l.anioCobro === anioSel && l.mesCobro <= mesSel);
-      if (!esHastaEsteMes) continue;
-      total += l.montoParticipacion;
-      cantidad += 1;
-      const prev = porAliado.get(l.aliadoId) ?? {
-        codigo: l.aliadoCodigo,
-        nombre: l.aliadoNombre,
-        total: 0,
-        cantidad: 0,
-      };
-      prev.total += l.montoParticipacion;
-      prev.cantidad += 1;
-      porAliado.set(l.aliadoId, prev);
-    }
-    return { total, cantidad, detalle: [...porAliado.values()] };
-  }, [liquidaciones, mesSel, anioSel]);
-
   /**
-   * Portafolio completo de referidos del mes (todas las carteras activas con aliado
-   * que ya cuentan en este mes), y desglose de ese total: facturado / por cobrar / otros.
+   * Portafolio de referidos del mes (mismo universo en total y desglose).
+   * Cada cartera con aliado aporta valorCartera × % a un solo bucket:
+   * facturado / por cobrar / otros → siempre suman el total.
    */
   const referidosMesActual = useMemo(() => {
+    const cobroPorCartera = new Map<string, CobroMensual>();
+    for (const cobro of cobrosDelMes) {
+      cobroPorCartera.set(cobro.carteraId, cobro);
+    }
+
     const clientesIds = new Set<string>();
     const aliadosIds = new Set<string>();
+    const aliadosFacturado = new Set<string>();
+    const aliadosPorCobrar = new Set<string>();
+    const aliadosOtros = new Set<string>();
+    const aliadosFacturadoOtros = new Set<string>();
     let carterasCount = 0;
     let total = 0;
+    let facturado = 0;
+    let porCobrar = 0;
+    let otros = 0;
+    let facturadoCantidad = 0;
+    let porCobrarCantidad = 0;
+    let otrosCantidad = 0;
 
     for (const cartera of carteras) {
       if (!esCarteraActiva(cartera)) continue;
@@ -1031,15 +982,29 @@ export default function Carteras() {
       if (!info || !cliente.aliadoId) continue;
       const monto = calcularParticipacion(cartera.valorCartera, info.porcentaje);
       if (monto <= 0) continue;
+
       clientesIds.add(cliente.id);
       aliadosIds.add(cliente.aliadoId);
       carterasCount += 1;
       total += monto;
-    }
 
-    const facturado = facturadoAliados.total;
-    const porCobrar = participacionAliados.total;
-    const otros = Math.max(0, total - facturado - porCobrar);
+      const cobro = cobroPorCartera.get(cartera.id);
+      if (!cobro || cobro.esCortesia || esPagoAnticipado(cobro)) {
+        otros += monto;
+        otrosCantidad += 1;
+        aliadosOtros.add(cliente.aliadoId);
+        aliadosFacturadoOtros.add(cliente.aliadoId);
+      } else if (cobro.estado === 'Pagado') {
+        facturado += monto;
+        facturadoCantidad += 1;
+        aliadosFacturado.add(cliente.aliadoId);
+        aliadosFacturadoOtros.add(cliente.aliadoId);
+      } else {
+        porCobrar += monto;
+        porCobrarCantidad += 1;
+        aliadosPorCobrar.add(cliente.aliadoId);
+      }
+    }
 
     return {
       referidos: clientesIds.size,
@@ -1049,8 +1014,62 @@ export default function Carteras() {
       facturado,
       porCobrar,
       otros,
+      facturadoCantidad,
+      porCobrarCantidad,
+      otrosCantidad,
+      aliadosFacturado: aliadosFacturado.size,
+      aliadosPorCobrar: aliadosPorCobrar.size,
+      aliadosOtros: aliadosOtros.size,
+      aliadosFacturadoOtros: aliadosFacturadoOtros.size,
     };
-  }, [carteras, clientesMap, aliados, mesSel, anioSel, facturadoAliados.total, participacionAliados.total]);
+  }, [carteras, clientesMap, aliados, mesSel, anioSel, cobrosDelMes]);
+
+  /** Por pagar: solo pendiente real. Lo ya pagado en un mes no pasa al siguiente. */
+  const acumuladoAliados = useMemo(() => {
+    const base = porPagarDesdePortafolio({
+      desglose: referidosMesActual,
+      liquidaciones,
+      mes: mesSel,
+      anio: anioSel,
+    });
+
+    const porAliado = new Map<string, { codigo: string; nombre: string; total: number; cantidad: number }>();
+    for (const l of liquidaciones) {
+      if (l.estado === 'Pagado') continue;
+      const f = mesDeFactura(l);
+      const esEsteMes = f.mes === mesSel && f.anio === anioSel;
+      if (!esEsteMes && !esLiquidacionPendienteHasta(l, mesSel, anioSel)) continue;
+      const prev = porAliado.get(l.aliadoId) ?? {
+        codigo: l.aliadoCodigo,
+        nombre: l.aliadoNombre,
+        total: 0,
+        cantidad: 0,
+      };
+      prev.total += l.montoParticipacion;
+      prev.cantidad += 1;
+      porAliado.set(l.aliadoId, prev);
+    }
+
+    const cantidadEsteMes = base.esteMes <= 0
+      ? 0
+      : (base.cantidadEsteMesPendiente || referidosMesActual.facturadoCantidad + referidosMesActual.otrosCantidad);
+
+    return {
+      total: base.total,
+      cantidad: cantidadEsteMes + base.cantidadAnteriores,
+      esteMes: base.esteMes,
+      anteriores: base.anteriores,
+      cantidadEsteMes,
+      cantidadAnteriores: base.cantidadAnteriores,
+      detalle: [...porAliado.values()],
+      aliadosCount: Math.max(referidosMesActual.aliadosFacturadoOtros, porAliado.size),
+    };
+  }, [
+    liquidaciones,
+    mesSel,
+    anioSel,
+    referidosMesActual,
+  ]);
 
   const handlePago = (cobro: CobroMensual, isPagado: boolean) => {
     if (isPagado) {
@@ -1441,68 +1460,76 @@ export default function Carteras() {
               {formatCOP(referidosMesActual.total)}
             </p>
             <p className="text-[10px] text-slate-400 mt-1">
-              Todas las carteras activas con aliado · {referidosMesActual.aliados} aliado{referidosMesActual.aliados !== 1 ? 's' : ''}
+              {referidosMesActual.aliados} aliado{referidosMesActual.aliados !== 1 ? 's' : ''}
             </p>
           </div>
 
-          <div className="py-2 space-y-2">
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">De ese total</p>
-            <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-2.5 py-2">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-[10px] text-indigo-700 font-bold uppercase tracking-wider">Facturado</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Cliente ya pagó</p>
-                </div>
-                <p className="text-sm font-bold text-indigo-800 tabular-nums">{formatCOP(referidosMesActual.facturado)}</p>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                {facturadoAliados.cantidad} pago{facturadoAliados.cantidad !== 1 ? 's' : ''} · {facturadoAliados.detalle.length} aliado{facturadoAliados.detalle.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-            <div className="rounded-lg bg-sky-50 border border-sky-100 px-2.5 py-2">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-[10px] text-sky-700 font-bold uppercase tracking-wider">Por cobrar</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Cliente aún no paga</p>
-                </div>
-                <p className="text-sm font-bold text-sky-800 tabular-nums">{formatCOP(referidosMesActual.porCobrar)}</p>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                {participacionAliados.cantidad} cartera{participacionAliados.cantidad !== 1 ? 's' : ''} · {participacionAliados.detalle.length} aliado{participacionAliados.detalle.length !== 1 ? 's' : ''}
-              </p>
+          <div className="py-2 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-slate-600">
+                Facturado
+                <span className="text-[10px] text-slate-400 ml-1">
+                  {referidosMesActual.facturadoCantidad} cart.
+                </span>
+              </span>
+              <span className="font-bold text-indigo-700 tabular-nums">{formatCOP(referidosMesActual.facturado)}</span>
             </div>
             {referidosMesActual.otros > 0 && (
-              <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">Otros</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Pagados antes, cortesías u otros</p>
-                  </div>
-                  <p className="text-sm font-bold text-slate-700 tabular-nums">{formatCOP(referidosMesActual.otros)}</p>
-                </div>
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-slate-600">
+                  Otros
+                  <span className="text-[10px] text-slate-400 ml-1">
+                    {referidosMesActual.otrosCantidad} cart.
+                  </span>
+                </span>
+                <span className="font-bold text-slate-700 tabular-nums">{formatCOP(referidosMesActual.otros)}</span>
               </div>
             )}
-            <p className="text-[10px] text-slate-400 tabular-nums text-right">
-              {formatCOP(referidosMesActual.facturado)}
-              {' + '}
-              {formatCOP(referidosMesActual.porCobrar)}
-              {referidosMesActual.otros > 0 ? ` + ${formatCOP(referidosMesActual.otros)}` : ''}
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-slate-600">
+                Por cobrar
+                <span className="text-[10px] text-slate-400 ml-1">
+                  {referidosMesActual.porCobrarCantidad} cart.
+                </span>
+              </span>
+              <span className="font-bold text-sky-700 tabular-nums">{formatCOP(referidosMesActual.porCobrar)}</span>
+            </div>
+            <p className="text-[10px] text-slate-400 tabular-nums text-right pt-1 border-t border-sky-50">
+              {referidosMesActual.otros > 0
+                ? `${formatCOP(referidosMesActual.facturado)} + ${formatCOP(referidosMesActual.otros)} + ${formatCOP(referidosMesActual.porCobrar)}`
+                : `${formatCOP(referidosMesActual.facturado)} + ${formatCOP(referidosMesActual.porCobrar)}`}
               {' = '}
               {formatCOP(referidosMesActual.total)}
             </p>
           </div>
 
           <div className="pt-2">
-            <p className="text-[10px] text-amber-800 font-bold uppercase tracking-wider leading-tight">
-              Por pagar a aliados
-            </p>
-            <p className="text-base font-bold text-amber-900 tabular-nums mt-1">{formatCOP(acumuladoAliados.total)}</p>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Debemos transferir (incluye meses anteriores)
-            </p>
-            <p className="text-[10px] text-slate-400">
-              {acumuladoAliados.cantidad} pago{acumuladoAliados.cantidad !== 1 ? 's' : ''} · {acumuladoAliados.detalle.length} aliado{acumuladoAliados.detalle.length !== 1 ? 's' : ''}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] text-amber-800 font-bold uppercase tracking-wider">
+                Por pagar a aliados
+              </p>
+              <p className="text-base font-bold text-amber-900 tabular-nums">{formatCOP(acumuladoAliados.total)}</p>
+            </div>
+            <div className="mt-1.5 space-y-1 text-[11px]">
+              <div className="flex items-center justify-between gap-2 text-amber-900">
+                <span>
+                  Este mes
+                  <span className="text-slate-400">
+                    {' '}· {acumuladoAliados.cantidadEsteMes} cart. pendientes
+                  </span>
+                </span>
+                <span className="font-bold tabular-nums">{formatCOP(acumuladoAliados.esteMes)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-amber-900">
+                <span>
+                  Anteriores
+                  {acumuladoAliados.cantidadAnteriores > 0 && (
+                    <span className="text-slate-400"> · {acumuladoAliados.cantidadAnteriores}</span>
+                  )}
+                </span>
+                <span className="font-bold tabular-nums">{formatCOP(acumuladoAliados.anteriores)}</span>
+              </div>
+            </div>
           </div>
         </div>
 

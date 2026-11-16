@@ -140,7 +140,7 @@ export default function ClienteForm({ onClose, initial }: ClienteFormProps) {
       {form.aliadoId && (
         <p className="text-xs text-sky-700 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2">
           Código del aliado: <span className="font-bold">{aliados.find(a => a.id === form.aliadoId)?.codigo}</span>
-          {' '}— ese porcentaje del pago de cartera se transfiere a su banco del 1 al 5 del mes siguiente.
+          {' '}— ese porcentaje del pago de cartera se transfiere a su banco en el mismo mes (hasta el día 5).
         </p>
       )}
 

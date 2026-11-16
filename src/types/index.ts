@@ -230,7 +230,7 @@ export interface ComprobanteAliado {
   size: number;
 }
 
-/** Parte del cobro que se transfiere al banco del aliado en los primeros 5 días del mes siguiente. */
+/** Parte del cobro que se transfiere al banco del aliado en el mismo mes (límite día 5). */
 export interface LiquidacionAliado {
   id: string;
   aliadoId: string;

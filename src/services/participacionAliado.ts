@@ -44,7 +44,7 @@ export async function anularLiquidacionesDeCobro(cobroId: string) {
 
 /**
  * Al registrar un pago de cartera, aparta el % del aliado para transferirlo
- * a su banco entre el día 1 y el 5 del mes siguiente.
+ * en el mismo mes (límite día 5).
  */
 export async function crearLiquidacionPorPago(
   cobro: Pick<CobroMensual, 'id' | 'clienteId' | 'carteraId' | 'mes' | 'anio'> & Partial<CobroMensual>,
